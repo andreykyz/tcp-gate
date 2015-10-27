@@ -24,7 +24,6 @@ type Configuration struct {
 	Users []UserInfo
 }
 
-// TODO: Get from headers.
 const SO_ORIGINAL_DST = 80
 
 var config Configuration
@@ -44,8 +43,10 @@ const HDR_LEN = 6
 var isServer = flag.Bool("s", false, "Server mode.")
 var listenAddr = flag.String("lsnaddr", "localhost:10011", "Proxy listening address in both modes.")
 var proxyAddr = flag.String("proxyaddr", "localhost:10012", "Address to proxy connection to (client mode only).")
-var userId = flag.Int("userid", 0, "User id. (client mode only)")
-var passPhrase = flag.String("pass", "", "Passphrase. (client mode only)")
+var cfgName = flag.String("f", "config.json", "Configuration file name (server mode only).")
+var userId = flag.Int("userid", 0, "User id. (client mode only).")
+var passPhrase = flag.String("pass", "", "Passphrase. (client mode only).")
+var daemonize = flag.Bool("d", false, "Daemonize.")
 
 var (
     Trace   *log.Logger
@@ -83,8 +84,12 @@ func main() {
 	// Parse command line arguments.
 	flag.Parse()
 	
+	if *daemonize {
+		daemon(1, 1)
+	}
+
 	if *isServer {
-		readConfig("config.json")
+		readConfig(*cfgName)
 		Info.Printf("Starting in server mode.")
 		Info.Printf("Listen on: %s", *listenAddr)
 	} else {
@@ -183,7 +188,7 @@ func handleClient(conn *net.TCPConn) {
 	// BUG?: We create new connection in getOriginalDst.
 	defer func() {
 		conn.Close()
-//		Info.Printf("Client connection closed.")
+	//	Info.Printf("Client connection closed.")
 	}()
 
 	ipv4, port, conn, err := getOriginalDst(conn)
@@ -208,14 +213,13 @@ func handleClient(conn *net.TCPConn) {
 	}
 	defer func() {
 		remote.Close()
-//		Info.Printf("Remote connection closed.")
+	//	Info.Printf("Remote connection closed.")
 	}()
 
 	hdr := ConnectionHeader{MAGIC: [4]byte{73, 77, 67, 65}, UserId: uint32(*userId), Md5Sum: Md5Sum, Len: HDR_LEN, Addr4: ipv4, Port: port}
 	sendHeader(remote, hdr)
 
 	copyData(conn, remote)
-
 }
 
 func getOriginalDst(clientConn *net.TCPConn) (ipv4 [4]byte, port uint16, newTCPConn *net.TCPConn, err error) {
@@ -296,4 +300,39 @@ func copyData(conn1 *net.TCPConn, conn2 *net.TCPConn) {
 	}()
 
 	<- finished
+}
+
+func daemon (nochdir, noclose int) int {
+	//var ret uintptr
+	//var err uintptr
+
+	ret,_,err := syscall.Syscall(syscall.SYS_FORK, 0, 0, 0)
+	if err != 0 {
+		return -1
+	}
+	switch (ret) {
+		case 0:
+			break
+		default:
+			os.Exit (0)
+	}
+
+	if _,err := syscall.Setsid (); err != nil {
+		return -1
+	}
+	if nochdir == 0 {
+		os.Chdir("/")
+	}
+
+	if noclose == 0 {
+		f, e := os.OpenFile("/dev/null", os.O_RDWR, 0)
+		if e == nil {
+			fd := f.Fd()
+			syscall.Dup2 (int(fd), int(os.Stdin.Fd()))
+			syscall.Dup2 (int(fd), int(os.Stdout.Fd()))
+			syscall.Dup2 (int(fd), int(os.Stderr.Fd()))
+		}
+	}
+
+	return 0
 }
