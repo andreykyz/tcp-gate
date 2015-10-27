@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	log "github.com/Sirupsen/logrus"
 	"os"
 )
 
@@ -18,12 +19,12 @@ type Configuration struct {
 func readConfig(filename string) {
 	file, err := os.Open(filename)
 	if err != nil {
-		Error.Printf("Failed to open config file %s", filename)
+		log.Errorf("Failed to open config file %s", filename)
 	}
 	decoder := json.NewDecoder(file)
 	err = decoder.Decode(&config)
 	if err != nil {
-		Error.Println("error:", err)
+		log.Error("error:", err)
 	}
-	Info.Println(config.Users)
+	log.Info(config.Users)
 }

@@ -3,7 +3,7 @@ package main
 import (
 	"crypto/md5"
 	"encoding/binary"
-	"log"
+	log "github.com/Sirupsen/logrus"
 	"net"
 )
 
@@ -44,7 +44,7 @@ func handleServer(conn *net.TCPConn) {
 		}
 	}
 	if userChecked == false {
-		Error.Printf("Wrong user credentials.")
+		log.Error("Wrong user credentials.")
 		return
 	}
 
@@ -54,7 +54,7 @@ func handleServer(conn *net.TCPConn) {
 	remote, err := net.DialTCP("tcp", nil, raddr)
 	if err != nil {
 		// Exit out when an error occurs
-		Error.Printf("Failed to connect to server: %v", err)
+		log.Errorf("Failed to connect to server: %v", err)
 		return
 	}
 	defer remote.Close()
@@ -71,10 +71,10 @@ func handleClient(conn *net.TCPConn) {
 
 	ipv4, port, conn, err := getOriginalDst(conn)
 	if err != nil {
-		Error.Printf("handleConnection(): can not handle this connection, error occurred in getting original destination ip address/port: %v", err)
+		log.Errorf("handleConnection(): can not handle this connection, error occurred in getting original destination ip address/port: %v", err)
 		return
 	} else {
-		Info.Printf("Original destination is %v:%d", ipv4, port)
+		log.Infof("Original destination is %v:%d", ipv4, port)
 	}
 
 	raddr, err := net.ResolveTCPAddr("tcp", *proxyAddr)
@@ -86,7 +86,7 @@ func handleClient(conn *net.TCPConn) {
 	remote, err := net.DialTCP("tcp", nil, raddr)
 	if err != nil {
 		// Exit out when an error occurs
-		Error.Printf("Failed to connect to server: %v", err)
+		log.Errorf("Failed to connect to server: %v", err)
 		return
 	}
 	defer func() {

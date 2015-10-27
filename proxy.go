@@ -3,11 +3,8 @@ package main
 import (
 	"crypto/md5"
 	"flag"
-	"io"
-	"io/ioutil"
-	"log"
+	log "github.com/Sirupsen/logrus"
 	"net"
-	"os"
 )
 
 var config Configuration
@@ -22,39 +19,7 @@ var userId = flag.Int("userid", 0, "User id. (client mode only).")
 var passPhrase = flag.String("pass", "", "Passphrase. (client mode only).")
 var daemonize = flag.Bool("d", false, "Daemonize.")
 
-var (
-	Trace   *log.Logger
-	Info    *log.Logger
-	Warning *log.Logger
-	Error   *log.Logger
-)
-
-func Init(
-	traceHandle io.Writer,
-	infoHandle io.Writer,
-	warningHandle io.Writer,
-	errorHandle io.Writer) {
-
-	Trace = log.New(traceHandle,
-		"TRACE: ",
-		log.Ldate|log.Ltime|log.Lshortfile)
-
-	Info = log.New(infoHandle,
-		"INFO: ",
-		log.Ldate|log.Ltime|log.Lshortfile)
-
-	Warning = log.New(warningHandle,
-		"WARNING: ",
-		log.Ldate|log.Ltime|log.Lshortfile)
-
-	Error = log.New(errorHandle,
-		"ERROR: ",
-		log.Ldate|log.Ltime|log.Lshortfile)
-}
-
 func main() {
-	Init(ioutil.Discard, os.Stdout, os.Stdout, os.Stderr)
-
 	// Parse command line arguments.
 	flag.Parse()
 
@@ -64,13 +29,13 @@ func main() {
 
 	if *isServer {
 		readConfig(*cfgName)
-		Info.Printf("Starting in server mode.")
-		Info.Printf("Listen on: %s", *listenAddr)
+		log.Info("Starting in server mode.")
+		log.Infof("Listen on: %s", *listenAddr)
 	} else {
 		Md5Sum = md5.Sum([]byte(*passPhrase))
-		Info.Printf("Starting in client mode.")
-		Info.Printf("Listen on: %s", *listenAddr)
-		Info.Printf("Proxy connecions to: %s", *proxyAddr)
+		log.Info("Starting in client mode.")
+		log.Infof("Listen on: %s", *listenAddr)
+		log.Infof("Proxy connecions to: %s", *proxyAddr)
 	}
 
 	laddr, err := net.ResolveTCPAddr("tcp", *listenAddr)
@@ -87,10 +52,10 @@ func main() {
 	for {
 		conn, err := listener.AcceptTCP()
 		if conn == nil {
-			Error.Printf("Failed to accept connection: %v", err)
+			log.Infof("Failed to accept connection: %v", err)
 			continue
 		} else {
-			Info.Printf("Received connection from %s.", conn.RemoteAddr())
+			log.Infof("Received connection from %s.", conn.RemoteAddr())
 		}
 
 		if *isServer {

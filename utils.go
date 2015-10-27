@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	log "github.com/Sirupsen/logrus"
 	"io"
 	"net"
 	"os"
@@ -36,7 +37,7 @@ func getOriginalDst(clientConn *net.TCPConn) (ipv4 [4]byte, port uint16, newTCPC
 	// will be in non-blocking mode.  What a pain.
 	clientConnFile, err := clientConn.File()
 	if err != nil {
-		Info.Printf("GETORIGINALDST|%v->?->FAILEDTOBEDETERMINED|ERR: could not get a copy of the client connection's file object", srcipport)
+		log.Errorf("GETORIGINALDST|%v->?->FAILEDTOBEDETERMINED|ERR: could not get a copy of the client connection's file object", srcipport)
 		return
 	} else {
 		clientConn.Close()
@@ -49,12 +50,12 @@ func getOriginalDst(clientConn *net.TCPConn) (ipv4 [4]byte, port uint16, newTCPC
 	// IPv4 address starts at the 5th byte, 4 bytes long (206 190 36 45)
 	addr, err := syscall.GetsockoptIPv6Mreq(int(clientConnFile.Fd()), syscall.IPPROTO_IP, SO_ORIGINAL_DST)
 	if err != nil {
-		Info.Printf("GETORIGINALDST|%v->?->FAILEDTOBEDETERMINED|ERR: getsocketopt(SO_ORIGINAL_DST) failed: %v", srcipport, err)
+		log.Errorf("GETORIGINALDST|%v->?->FAILEDTOBEDETERMINED|ERR: getsocketopt(SO_ORIGINAL_DST) failed: %v", srcipport, err)
 		return
 	}
 	newConn, err := net.FileConn(clientConnFile)
 	if err != nil {
-		Info.Printf("GETORIGINALDST|%v->?->%v|ERR: could not create a FileConn fron clientConnFile=%+v: %v", srcipport, addr, clientConnFile, err)
+		log.Errorf("GETORIGINALDST|%v->?->%v|ERR: could not create a FileConn fron clientConnFile=%+v: %v", srcipport, addr, clientConnFile, err)
 		return
 	}
 	if _, ok := newConn.(*net.TCPConn); ok {
@@ -62,7 +63,7 @@ func getOriginalDst(clientConn *net.TCPConn) (ipv4 [4]byte, port uint16, newTCPC
 		clientConnFile.Close()
 	} else {
 		errmsg := fmt.Sprintf("ERR: newConn is not a *net.TCPConn, instead it is: %T (%v)", newConn, newConn)
-		Info.Printf("GETORIGINALDST|%v->?->%v|%s", srcipport, addr, errmsg)
+		log.Errorf("GETORIGINALDST|%v->?->%v|%s", srcipport, addr, errmsg)
 		err = errors.New(errmsg)
 		return
 	}
