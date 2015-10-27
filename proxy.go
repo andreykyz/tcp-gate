@@ -1,22 +1,23 @@
-package main 
-import ( 
-    "os"
-    "flag"
+package main
+
+import (
+	"crypto/md5"
+	"encoding/binary"
+	"encoding/json"
+	"errors"
+	"flag"
+	"fmt"
+	"io"
+	"io/ioutil"
 	"log"
 	"net"
-	"io"
+	"os"
 	"syscall"
-	"fmt"
-	"errors"
-	"encoding/binary"
-	"crypto/md5"
-	"io/ioutil"
-	"encoding/json"
 )
 
 type UserInfo struct {
-	Id uint32
-	Name string
+	Id     uint32
+	Name   string
 	Passwd string
 }
 
@@ -31,13 +32,14 @@ var config Configuration
 var Md5Sum [16]byte
 
 type ConnectionHeader struct {
-	MAGIC [4]byte
+	MAGIC  [4]byte
 	UserId uint32
 	Md5Sum [16]byte
-	Len uint16
-	Addr4 [4]byte
-	Port uint16
+	Len    uint16
+	Addr4  [4]byte
+	Port   uint16
 }
+
 const HDR_LEN = 6
 
 var isServer = flag.Bool("s", false, "Server mode.")
@@ -49,33 +51,33 @@ var passPhrase = flag.String("pass", "", "Passphrase. (client mode only).")
 var daemonize = flag.Bool("d", false, "Daemonize.")
 
 var (
-    Trace   *log.Logger
-    Info    *log.Logger
-    Warning *log.Logger
-    Error   *log.Logger
+	Trace   *log.Logger
+	Info    *log.Logger
+	Warning *log.Logger
+	Error   *log.Logger
 )
 
 func Init(
-    traceHandle io.Writer,
-    infoHandle io.Writer,
-    warningHandle io.Writer,
-    errorHandle io.Writer) {
+	traceHandle io.Writer,
+	infoHandle io.Writer,
+	warningHandle io.Writer,
+	errorHandle io.Writer) {
 
-    Trace = log.New(traceHandle,
-        "TRACE: ",
-        log.Ldate|log.Ltime|log.Lshortfile)
+	Trace = log.New(traceHandle,
+		"TRACE: ",
+		log.Ldate|log.Ltime|log.Lshortfile)
 
-    Info = log.New(infoHandle,
-        "INFO: ",
-        log.Ldate|log.Ltime|log.Lshortfile)
+	Info = log.New(infoHandle,
+		"INFO: ",
+		log.Ldate|log.Ltime|log.Lshortfile)
 
-    Warning = log.New(warningHandle,
-        "WARNING: ",
-        log.Ldate|log.Ltime|log.Lshortfile)
+	Warning = log.New(warningHandle,
+		"WARNING: ",
+		log.Ldate|log.Ltime|log.Lshortfile)
 
-    Error = log.New(errorHandle,
-        "ERROR: ",
-        log.Ldate|log.Ltime|log.Lshortfile)
+	Error = log.New(errorHandle,
+		"ERROR: ",
+		log.Ldate|log.Ltime|log.Lshortfile)
 }
 
 func main() {
@@ -83,7 +85,7 @@ func main() {
 
 	// Parse command line arguments.
 	flag.Parse()
-	
+
 	if *daemonize {
 		daemon(1, 1)
 	}
@@ -104,27 +106,27 @@ func main() {
 		log.Fatal("Failed to resolve: ", err)
 	}
 
-    listener, err := net.ListenTCP("tcp", laddr) 
-    if listener == nil { 
+	listener, err := net.ListenTCP("tcp", laddr)
+	if listener == nil {
 		log.Fatal("Failed listen on address: ", err)
-    }
-    defer listener.Close()
+	}
+	defer listener.Close()
 
-    for {
-		conn, err := listener.AcceptTCP() 
-		if conn == nil { 
-			Error.Printf("Failed to accept connection: %v", err) 
+	for {
+		conn, err := listener.AcceptTCP()
+		if conn == nil {
+			Error.Printf("Failed to accept connection: %v", err)
 			continue
 		} else {
-		    Info.Printf("Received connection from %s.", conn.RemoteAddr())
+			Info.Printf("Received connection from %s.", conn.RemoteAddr())
 		}
-		
-		if (*isServer) {
+
+		if *isServer {
 			go handleServer(conn)
 		} else {
 			go handleClient(conn)
 		}
-    }
+	}
 }
 
 func readConfig(filename string) {
@@ -135,18 +137,18 @@ func readConfig(filename string) {
 	decoder := json.NewDecoder(file)
 	err = decoder.Decode(&config)
 	if err != nil {
-  		Error.Println("error:", err)
+		Error.Println("error:", err)
 	}
-	Info.Println(config.Users) 
+	Info.Println(config.Users)
 }
-	
+
 func readHeader(conn *net.TCPConn) (hdr ConnectionHeader, err error) {
 	err = binary.Read(conn, binary.BigEndian, &hdr)
 	return
 }
 
 func sendHeader(conn *net.TCPConn, hdr ConnectionHeader) (err error) {
-    err = binary.Write(conn, binary.BigEndian, hdr)
+	err = binary.Write(conn, binary.BigEndian, hdr)
 	return
 }
 
@@ -161,7 +163,7 @@ func handleServer(conn *net.TCPConn) {
 	userChecked := false
 	for i := 0; i < len(config.Users); i++ {
 		if config.Users[i].Id == hdr.UserId && md5.Sum([]byte(config.Users[i].Passwd)) == hdr.Md5Sum {
-			userChecked = true		
+			userChecked = true
 			break
 		}
 	}
@@ -175,9 +177,9 @@ func handleServer(conn *net.TCPConn) {
 	// Try to connect to remote server.
 	remote, err := net.DialTCP("tcp", nil, raddr)
 	if err != nil {
-    	// Exit out when an error occurs
-    	Error.Printf("Failed to connect to server: %v", err)
-    	return
+		// Exit out when an error occurs
+		Error.Printf("Failed to connect to server: %v", err)
+		return
 	}
 	defer remote.Close()
 
@@ -188,32 +190,32 @@ func handleClient(conn *net.TCPConn) {
 	// BUG?: We create new connection in getOriginalDst.
 	defer func() {
 		conn.Close()
-	//	Info.Printf("Client connection closed.")
+		//	Info.Printf("Client connection closed.")
 	}()
 
 	ipv4, port, conn, err := getOriginalDst(conn)
-    if err != nil {
-        Error.Printf("handleConnection(): can not handle this connection, error occurred in getting original destination ip address/port: %v", err)
-        return
-    } else {
-    	Info.Printf("Original destination is %v:%d", ipv4, port)
-    }
+	if err != nil {
+		Error.Printf("handleConnection(): can not handle this connection, error occurred in getting original destination ip address/port: %v", err)
+		return
+	} else {
+		Info.Printf("Original destination is %v:%d", ipv4, port)
+	}
 
-    raddr, err := net.ResolveTCPAddr("tcp", *proxyAddr)
+	raddr, err := net.ResolveTCPAddr("tcp", *proxyAddr)
 	if err != nil {
 		log.Fatal("Failed to resolve: ", err)
 	}
 
-   	// Try to connect to remote server.
+	// Try to connect to remote server.
 	remote, err := net.DialTCP("tcp", nil, raddr)
 	if err != nil {
-    	// Exit out when an error occurs
-    	Error.Printf("Failed to connect to server: %v", err)
-    	return
+		// Exit out when an error occurs
+		Error.Printf("Failed to connect to server: %v", err)
+		return
 	}
 	defer func() {
 		remote.Close()
-	//	Info.Printf("Remote connection closed.")
+		//	Info.Printf("Remote connection closed.")
 	}()
 
 	hdr := ConnectionHeader{MAGIC: [4]byte{73, 77, 67, 65}, UserId: uint32(*userId), Md5Sum: Md5Sum, Len: HDR_LEN, Addr4: ipv4, Port: port}
@@ -223,65 +225,65 @@ func handleClient(conn *net.TCPConn) {
 }
 
 func getOriginalDst(clientConn *net.TCPConn) (ipv4 [4]byte, port uint16, newTCPConn *net.TCPConn, err error) {
-    if clientConn == nil {
-        err = errors.New("ERR: clientConn is nil")
-        return
-    }
+	if clientConn == nil {
+		err = errors.New("ERR: clientConn is nil")
+		return
+	}
 
-    // test if the underlying fd is nil
-    remoteAddr := clientConn.RemoteAddr()
-    if remoteAddr == nil {
-        err = errors.New("ERR: clientConn.fd is nil")
-        return
-    }
+	// test if the underlying fd is nil
+	remoteAddr := clientConn.RemoteAddr()
+	if remoteAddr == nil {
+		err = errors.New("ERR: clientConn.fd is nil")
+		return
+	}
 
-    srcipport := fmt.Sprintf("%v", clientConn.RemoteAddr())
+	srcipport := fmt.Sprintf("%v", clientConn.RemoteAddr())
 
-    newTCPConn = nil
-    // net.TCPConn.File() will cause the receiver's (clientConn) socket to be placed in blocking mode.
-    // The workaround is to take the File returned by .File(), do getsockopt() to get the original 
-    // destination, then create a new *net.TCPConn by calling net.Conn.FileConn().  The new TCPConn
-    // will be in non-blocking mode.  What a pain.
-    clientConnFile, err := clientConn.File()
-    if err != nil {
-        Info.Printf("GETORIGINALDST|%v->?->FAILEDTOBEDETERMINED|ERR: could not get a copy of the client connection's file object", srcipport)
-        return
-    } else {
-        clientConn.Close()
-    }
+	newTCPConn = nil
+	// net.TCPConn.File() will cause the receiver's (clientConn) socket to be placed in blocking mode.
+	// The workaround is to take the File returned by .File(), do getsockopt() to get the original
+	// destination, then create a new *net.TCPConn by calling net.Conn.FileConn().  The new TCPConn
+	// will be in non-blocking mode.  What a pain.
+	clientConnFile, err := clientConn.File()
+	if err != nil {
+		Info.Printf("GETORIGINALDST|%v->?->FAILEDTOBEDETERMINED|ERR: could not get a copy of the client connection's file object", srcipport)
+		return
+	} else {
+		clientConn.Close()
+	}
 
-    // Get original destination
-    // this is the only syscall in the Golang libs that I can find that returns 16 bytes
-    // Example result: &{Multiaddr:[2 0 31 144 206 190 36 45 0 0 0 0 0 0 0 0] Interface:0}
-    // port starts at the 3rd byte and is 2 bytes long (31 144 = port 8080)
-    // IPv4 address starts at the 5th byte, 4 bytes long (206 190 36 45)
-    addr, err :=  syscall.GetsockoptIPv6Mreq(int(clientConnFile.Fd()), syscall.IPPROTO_IP, SO_ORIGINAL_DST)
-    if err != nil {
-        Info.Printf("GETORIGINALDST|%v->?->FAILEDTOBEDETERMINED|ERR: getsocketopt(SO_ORIGINAL_DST) failed: %v", srcipport, err)
-        return
-    }
-    newConn, err := net.FileConn(clientConnFile)
-    if err != nil {
-        Info.Printf("GETORIGINALDST|%v->?->%v|ERR: could not create a FileConn fron clientConnFile=%+v: %v", srcipport, addr, clientConnFile, err)
-        return
-    }
-    if _, ok := newConn.(*net.TCPConn); ok {
-        newTCPConn = newConn.(*net.TCPConn)
-        clientConnFile.Close()
-    } else {
-        errmsg := fmt.Sprintf("ERR: newConn is not a *net.TCPConn, instead it is: %T (%v)", newConn, newConn)
-        Info.Printf("GETORIGINALDST|%v->?->%v|%s", srcipport, addr, errmsg)
-        err = errors.New(errmsg)
-        return
-    }
+	// Get original destination
+	// this is the only syscall in the Golang libs that I can find that returns 16 bytes
+	// Example result: &{Multiaddr:[2 0 31 144 206 190 36 45 0 0 0 0 0 0 0 0] Interface:0}
+	// port starts at the 3rd byte and is 2 bytes long (31 144 = port 8080)
+	// IPv4 address starts at the 5th byte, 4 bytes long (206 190 36 45)
+	addr, err := syscall.GetsockoptIPv6Mreq(int(clientConnFile.Fd()), syscall.IPPROTO_IP, SO_ORIGINAL_DST)
+	if err != nil {
+		Info.Printf("GETORIGINALDST|%v->?->FAILEDTOBEDETERMINED|ERR: getsocketopt(SO_ORIGINAL_DST) failed: %v", srcipport, err)
+		return
+	}
+	newConn, err := net.FileConn(clientConnFile)
+	if err != nil {
+		Info.Printf("GETORIGINALDST|%v->?->%v|ERR: could not create a FileConn fron clientConnFile=%+v: %v", srcipport, addr, clientConnFile, err)
+		return
+	}
+	if _, ok := newConn.(*net.TCPConn); ok {
+		newTCPConn = newConn.(*net.TCPConn)
+		clientConnFile.Close()
+	} else {
+		errmsg := fmt.Sprintf("ERR: newConn is not a *net.TCPConn, instead it is: %T (%v)", newConn, newConn)
+		Info.Printf("GETORIGINALDST|%v->?->%v|%s", srcipport, addr, errmsg)
+		err = errors.New(errmsg)
+		return
+	}
 
-    ipv4  = [...]byte{ byte(addr.Multiaddr[4]),
-    				   byte(addr.Multiaddr[5]),
-    				   byte(addr.Multiaddr[6]),
-    				   byte(addr.Multiaddr[7]) }
-    port = uint16(addr.Multiaddr[2]) << 8 + uint16(addr.Multiaddr[3])
+	ipv4 = [...]byte{byte(addr.Multiaddr[4]),
+		byte(addr.Multiaddr[5]),
+		byte(addr.Multiaddr[6]),
+		byte(addr.Multiaddr[7])}
+	port = uint16(addr.Multiaddr[2])<<8 + uint16(addr.Multiaddr[3])
 
-    return
+	return
 }
 
 func copyData(conn1 *net.TCPConn, conn2 *net.TCPConn) {
@@ -299,25 +301,25 @@ func copyData(conn1 *net.TCPConn, conn2 *net.TCPConn) {
 		finished <- true
 	}()
 
-	<- finished
+	<-finished
 }
 
-func daemon (nochdir, noclose int) int {
+func daemon(nochdir, noclose int) int {
 	//var ret uintptr
 	//var err uintptr
 
-	ret,_,err := syscall.Syscall(syscall.SYS_FORK, 0, 0, 0)
+	ret, _, err := syscall.Syscall(syscall.SYS_FORK, 0, 0, 0)
 	if err != 0 {
 		return -1
 	}
-	switch (ret) {
-		case 0:
-			break
-		default:
-			os.Exit (0)
+	switch ret {
+	case 0:
+		break
+	default:
+		os.Exit(0)
 	}
 
-	if _,err := syscall.Setsid (); err != nil {
+	if _, err := syscall.Setsid(); err != nil {
 		return -1
 	}
 	if nochdir == 0 {
@@ -328,9 +330,9 @@ func daemon (nochdir, noclose int) int {
 		f, e := os.OpenFile("/dev/null", os.O_RDWR, 0)
 		if e == nil {
 			fd := f.Fd()
-			syscall.Dup2 (int(fd), int(os.Stdin.Fd()))
-			syscall.Dup2 (int(fd), int(os.Stdout.Fd()))
-			syscall.Dup2 (int(fd), int(os.Stderr.Fd()))
+			syscall.Dup2(int(fd), int(os.Stdin.Fd()))
+			syscall.Dup2(int(fd), int(os.Stdout.Fd()))
+			syscall.Dup2(int(fd), int(os.Stderr.Fd()))
 		}
 	}
 
