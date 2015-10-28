@@ -32,7 +32,6 @@ func handleServer(conn *net.TCPConn) {
 	defer conn.Close()
 
 	hdr, _ := readHeader(conn)
-	//Info.Printf("Original destination is %v:%d", hdr.Addr4, hdr.Port)
 
 	// Find user
 	// TODO: Precompute all Md5Sums.
@@ -63,19 +62,15 @@ func handleServer(conn *net.TCPConn) {
 }
 
 func handleClient(conn *net.TCPConn) {
-	// BUG?: We create new connection in getOriginalDst.
-	defer func() {
-		conn.Close()
-		//	Info.Printf("Client connection closed.")
-	}()
-
 	ipv4, port, conn, err := getOriginalDst(conn)
 	if err != nil {
 		log.Errorf("handleConnection(): can not handle this connection, error occurred in getting original destination ip address/port: %v", err)
 		return
-	} else {
-		log.Infof("Original destination is %v:%d", ipv4, port)
 	}
+	// defer here because of getOriginalDst. It creates new connection
+	// and closes old one (if everything is ok).
+	defer conn.Close()
+	log.Infof("Original destination is %v:%d", ipv4, port)
 
 	raddr, err := net.ResolveTCPAddr("tcp", *proxyAddr)
 	if err != nil {
@@ -89,10 +84,7 @@ func handleClient(conn *net.TCPConn) {
 		log.Errorf("Failed to connect to server: %v", err)
 		return
 	}
-	defer func() {
-		remote.Close()
-		//	Info.Printf("Remote connection closed.")
-	}()
+	defer remote.Close()
 
 	hdr := ConnectionHeader{MAGIC: [4]byte{73, 77, 67, 65}, UserId: uint32(*userId), Md5Sum: Md5Sum, Len: HDR_LEN, Addr4: ipv4, Port: port}
 	sendHeader(remote, hdr)
