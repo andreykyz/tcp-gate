@@ -45,7 +45,7 @@ func handleServer(conn *net.TCPConn) {
 		return
 	}
 
-	raddr := &net.TCPAddr{IP: net.IPv4(hdr.Addr4[0], hdr.Addr4[1], hdr.Addr4[2], hdr.Addr4[3]), Port: int(hdr.Port) + 1}
+	raddr := &net.TCPAddr{IP: net.IPv4(hdr.Addr4[0], hdr.Addr4[1], hdr.Addr4[2], hdr.Addr4[3]), Port: int(hdr.Port)}
 
 	// Try to connect to remote server.
 	remote, err := net.DialTCP("tcp", nil, raddr)
