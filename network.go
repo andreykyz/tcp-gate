@@ -8,15 +8,13 @@ import (
 )
 
 type ConnectionHeader struct {
-	MAGIC  [4]byte
-	UserId uint32
-	Md5Sum [16]byte
-	Len    uint16
-	Addr4  [4]byte
-	Port   uint16
+	MAGIC  [4]byte				// 4
+	UserId uint32				// 8
+	Md5Sum [16]byte				// 24
+	OptLen uint16				// 26
+	Addr4  [4]byte				// 30
+	Port   uint16				// 32
 }
-
-const HDR_LEN = 6
 
 func readHeader(conn *net.TCPConn) (hdr ConnectionHeader, err error) {
 	err = binary.Read(conn, binary.BigEndian, &hdr)
@@ -86,7 +84,7 @@ func handleClient(conn *net.TCPConn) {
 	}
 	defer remote.Close()
 
-	hdr := ConnectionHeader{MAGIC: [4]byte{73, 77, 67, 65}, UserId: uint32(*userId), Md5Sum: Md5Sum, Len: HDR_LEN, Addr4: ipv4, Port: port}
+	hdr := ConnectionHeader{MAGIC: [4]byte{73, 77, 67, 65}, UserId: uint32(*userId), Md5Sum: Md5Sum, OptLen: 0, Addr4: ipv4, Port: port}
 	sendHeader(remote, hdr)
 
 	copyData(conn, remote)
