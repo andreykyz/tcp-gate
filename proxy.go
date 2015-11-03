@@ -18,11 +18,23 @@ var cfgName = flag.String("f", "example.conf", "Configuration file name (server 
 var userId = flag.Int("userid", 0, "User id. (client mode only).")
 var passPhrase = flag.String("pass", "", "Passphrase. (client mode only).")
 var daemonize = flag.Bool("d", false, "Daemonize.")
+var logLevel = flag.String("loglevel", "info", "Possible values: debug, info, warning, error")
 
 func main() {
 	// Parse command line arguments.
 	flag.Parse()
-
+	if *logLevel == "debug" {
+		log.SetLevel(log.DebugLevel)
+	}
+	if *logLevel == "info" {
+		log.SetLevel(log.InfoLevel)
+	}
+	if *logLevel == "warning" {
+		log.SetLevel(log.WarnLevel)
+	}
+	if *logLevel == "error" {
+		log.SetLevel(log.ErrorLevel)
+	}
 	if *daemonize {
 		daemon(1, 1)
 	}
