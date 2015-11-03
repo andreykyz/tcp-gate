@@ -1,19 +1,19 @@
 package main
 
 import (
-	"crypto/md5"
+	//	"crypto/md5"
 	"encoding/binary"
 	log "github.com/Sirupsen/logrus"
 	"net"
 )
 
 type ConnectionHeader struct {
-	MAGIC  [4]byte				// 4
-	UserId uint32				// 8
-	Md5Sum [16]byte				// 24
-	OptLen uint16				// 26
-	Addr4  [4]byte				// 30
-	Port   uint16				// 32
+	MAGIC  [4]byte  // 4
+	UserId uint32   // 8
+	Md5Sum [16]byte // 24
+	OptLen uint16   // 26
+	Addr4  [4]byte  // 30
+	Port   uint16   // 32
 }
 
 func readHeader(conn *net.TCPConn) (hdr ConnectionHeader, err error) {
@@ -32,16 +32,18 @@ func handleServer(conn *net.TCPConn) {
 	hdr, _ := readHeader(conn)
 
 	// Find user
-	// TODO: Precompute all Md5Sums.
 	userChecked := false
-	for i := 0; i < len(config.Users); i++ {
-		if config.Users[i].Id == hdr.UserId && md5.Sum([]byte(config.Users[i].Passwd)) == hdr.Md5Sum {
-			userChecked = true
-			break
-		}
+	if hdr.UserId > uint32(len(config.User)) {
+		log.Errorf("User with id %d so big", hdr.UserId)
+		return
+	}
+	log.Debugf("User with id %d hash %x connecting", hdr.UserId, hdr.Md5Sum)
+	if config.User[hdr.UserId].enabled && config.User[hdr.UserId].hash == hdr.Md5Sum {
+		userChecked = true
+		log.Debugf("User with id %d hash %x accepted", hdr.UserId, hdr.Md5Sum)
 	}
 	if userChecked == false {
-		log.Error("Wrong user credentials.")
+		log.Errorf("Wrong id %d hash %x", hdr.UserId, hdr.Md5Sum)
 		return
 	}
 

@@ -1,30 +1,65 @@
 package main
 
 import (
-	"encoding/json"
+	md5 "crypto/md5"
 	log "github.com/Sirupsen/logrus"
-	"os"
+	gcfg "gopkg.in/gcfg.v1"
 )
 
+type UserConfig struct {
+	Id       uint32
+	Password string
+}
+
 type UserInfo struct {
-	Id     uint32
-	Name   string
-	Passwd string
+	Name     string
+	Password string
+	hash     [16]byte
+	enabled  bool
+}
+
+type ServerInfo struct {
+	Ip   string
+	Port uint16
 }
 
 type Configuration struct {
-	Users []UserInfo
+	config struct {
+		Listen ServerInfo
+		User   map[string]*UserConfig
+	}
+	Listen ServerInfo
+	User   []UserInfo
 }
 
-func readConfig(filename string) {
-	file, err := os.Open(filename)
+func (cfg *Configuration) readConfig(filename string) {
+	err := gcfg.ReadFileInto(&cfg.config, filename)
 	if err != nil {
-		log.Errorf("Failed to open config file %s", filename)
+		log.Fatalf("Failed to parse gcfg data: %s", err)
 	}
-	decoder := json.NewDecoder(file)
-	err = decoder.Decode(&config)
-	if err != nil {
-		log.Error("error:", err)
+	log.Info(cfg.config.User)
+	var id uint32
+	id = 0
+	for _, user := range cfg.config.User {
+		if user.Id > id {
+			id = user.Id
+		}
 	}
-	log.Info(config.Users)
+	if id > 100000 {
+		id = 100000
+	}
+	cfg.User = make([]UserInfo, id+1)
+	for _, user := range cfg.User {
+		user.enabled = false
+	}
+	for userName, user := range cfg.config.User {
+		if user.Id > 100000 {
+			log.Warningf("Skip user (%s) id(%u) more then 1000", userName, user.Id)
+			continue
+		}
+		cfg.User[user.Id].Name = userName
+		cfg.User[user.Id].enabled = true
+		cfg.User[user.Id].hash = md5.Sum([]byte(user.Password))
+		log.Infof("id %d user %s pass %s hash %x", user.Id, userName, user.Password, cfg.User[user.Id].hash)
+	}
 }

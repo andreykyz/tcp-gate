@@ -14,7 +14,7 @@ var Md5Sum [16]byte
 var isServer = flag.Bool("s", false, "Server mode.")
 var listenAddr = flag.String("lsnaddr", "localhost:10011", "Proxy listening address in both modes.")
 var proxyAddr = flag.String("proxyaddr", "localhost:10012", "Address to proxy connection to (client mode only).")
-var cfgName = flag.String("f", "config.json", "Configuration file name (server mode only).")
+var cfgName = flag.String("f", "example.conf", "Configuration file name (server mode only).")
 var userId = flag.Int("userid", 0, "User id. (client mode only).")
 var passPhrase = flag.String("pass", "", "Passphrase. (client mode only).")
 var daemonize = flag.Bool("d", false, "Daemonize.")
@@ -26,9 +26,8 @@ func main() {
 	if *daemonize {
 		daemon(1, 1)
 	}
-
 	if *isServer {
-		readConfig(*cfgName)
+		config.readConfig(*cfgName)
 		log.Info("Starting in server mode.")
 		log.Infof("Listen on: %s", *listenAddr)
 	} else {
@@ -55,7 +54,7 @@ func main() {
 			log.Infof("Failed to accept connection: %v", err)
 			continue
 		} else {
-			log.Infof("Received connection from %s.", conn.RemoteAddr())
+			log.Debugf("Received connection from %s.", conn.RemoteAddr())
 		}
 
 		if *isServer {
