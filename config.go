@@ -54,12 +54,12 @@ func (cfg *Configuration) readConfig(filename string) {
 	}
 	for userName, user := range cfg.config.User {
 		if user.Id > 100000 {
-			log.Warningf("Skip user (%s) id(%u) more then 1000", userName, user.Id)
+			log.Warningf("Skip user (%s) id(%u) more then 100000", userName, user.Id)
 			continue
 		}
 		cfg.User[user.Id].Name = userName
 		cfg.User[user.Id].enabled = true
 		cfg.User[user.Id].hash = md5.Sum([]byte(user.Password))
-		log.Infof("id %d user %s pass %s hash %x", user.Id, userName, user.Password, cfg.User[user.Id].hash)
+		log.Debugf("id %d user %s pass %s hash %x", user.Id, userName, user.Password, cfg.User[user.Id].hash)
 	}
 }

@@ -1,7 +1,6 @@
 package main
 
 import (
-	//	"crypto/md5"
 	"encoding/binary"
 	log "github.com/Sirupsen/logrus"
 	"net"
