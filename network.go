@@ -30,19 +30,22 @@ func handleServer(conn *net.TCPConn) {
 
 	hdr, _ := readHeader(conn)
 
-	// Find user
-	userChecked := false
+	// Check user id and hash
 	if hdr.UserId > uint32(len(config.User)) {
 		log.Errorf("User with id %d so big", hdr.UserId)
 		return
 	}
-	log.Debugf("User with id %d hash %x connecting", hdr.UserId, hdr.Md5Sum)
-	if config.User[hdr.UserId].enabled && config.User[hdr.UserId].hash == hdr.Md5Sum {
-		userChecked = true
-		log.Debugf("User with id %d hash %x accepted", hdr.UserId, hdr.Md5Sum)
+	if !config.User[hdr.UserId].enabled {
+		log.Errorf("id %d not found", hdr.UserId)
+		return
 	}
-	if userChecked == false {
-		log.Errorf("Wrong id %d hash %x", hdr.UserId, hdr.Md5Sum)
+
+	log.Debugf("User with id %d hash %x connecting", hdr.UserId, hdr.Md5Sum)
+
+	if config.User[hdr.UserId].hash == hdr.Md5Sum {
+		log.Debugf("User %s with id %d hash %x accepted", config.User[hdr.UserId].Name, hdr.UserId, hdr.Md5Sum)
+	} else {
+		log.Errorf("id %d wrong hash %x", hdr.UserId, hdr.Md5Sum)
 		return
 	}
 

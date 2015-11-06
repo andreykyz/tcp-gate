@@ -4,10 +4,11 @@ import (
 	md5 "crypto/md5"
 	log "github.com/Sirupsen/logrus"
 	gcfg "gopkg.in/gcfg.v1"
+	"strconv"
 )
 
 type UserConfig struct {
-	Id       uint32
+	Name     string
 	Password string
 }
 
@@ -33,33 +34,34 @@ type Configuration struct {
 }
 
 func (cfg *Configuration) readConfig(filename string) {
+	idMax := uint32(100000)
 	err := gcfg.ReadFileInto(&cfg.config, filename)
 	if err != nil {
 		log.Fatalf("Failed to parse gcfg data: %s", err)
 	}
-	log.Info(cfg.config.User)
-	var id uint32
-	id = 0
-	for _, user := range cfg.config.User {
-		if user.Id > id {
-			id = user.Id
+	id := uint32(0)
+	for userIdStr, _ := range cfg.config.User {
+		userId, _ := strconv.ParseUint(userIdStr, 10, 32)
+		if uint32(userId) > id {
+			id = uint32(userId)
 		}
 	}
-	if id > 100000 {
-		id = 100000
+	if id > idMax {
+		id = idMax
 	}
 	cfg.User = make([]UserInfo, id+1)
 	for _, user := range cfg.User {
 		user.enabled = false
 	}
-	for userName, user := range cfg.config.User {
-		if user.Id > 100000 {
-			log.Warningf("Skip user (%s) id(%u) more then 100000", userName, user.Id)
+	for userIdStr, user := range cfg.config.User {
+		userId, _ := strconv.ParseUint(userIdStr, 10, 32)
+		if uint32(userId) > idMax {
+			log.Warningf("Skip user (%s) id(%u) more then %d", user.Name, userId, idMax)
 			continue
 		}
-		cfg.User[user.Id].Name = userName
-		cfg.User[user.Id].enabled = true
-		cfg.User[user.Id].hash = md5.Sum([]byte(user.Password))
-		log.Debugf("id %d user %s pass %s hash %x", user.Id, userName, user.Password, cfg.User[user.Id].hash)
+		cfg.User[userId].Name = user.Name
+		cfg.User[userId].enabled = true
+		cfg.User[userId].hash = md5.Sum([]byte(user.Password))
+		log.Debugf("id %d user %s pass %s hash %x", userId, user.Name, user.Password, cfg.User[userId].hash)
 	}
 }
