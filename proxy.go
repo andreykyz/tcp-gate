@@ -4,9 +4,7 @@ import (
 	"crypto/md5"
 	"flag"
 	log "github.com/Sirupsen/logrus"
-	"github.com/Sirupsen/logrus/hooks/syslog"
-	"io/ioutil"
-	"log/syslog"
+	"gopkg.in/natefinch/lumberjack.v2"
 	"net"
 	"os"
 )
@@ -21,8 +19,8 @@ var proxyAddr = flag.String("proxyaddr", "localhost:10012", "Address to proxy co
 var cfgName = flag.String("f", "example.conf", "Configuration file name (server mode only).")
 var userId = flag.Int("userid", 0, "User id. (client mode only).")
 var passPhrase = flag.String("pass", "", "Passphrase. (client mode only).")
-var daemonize = flag.Bool("d", false, "Daemonize.")
 var logLevel = flag.String("loglevel", "info", "Possible values: debug, info, warning, error")
+var logFile = flag.String("logfile", "", "Log file name.")
 
 func main() {
 	// Parse command line arguments.
@@ -39,6 +37,18 @@ func main() {
 	}
 	if *logLevel == "error" {
 		log.SetLevel(log.ErrorLevel)
+	}
+
+	if *logFile != "" {
+		log.SetFormatter(&log.TextFormatter{DisableColors: true})
+		// Standard logger interface set output has no return value.
+		// So, we have no change to know if there was errors.
+		log.SetOutput(&lumberjack.Logger{
+			Filename:   *logFile,
+			MaxSize:    50, // megabytes
+			MaxBackups: 3,
+			MaxAge:     28, //days
+		})
 	}
 
 	if *isServer {
