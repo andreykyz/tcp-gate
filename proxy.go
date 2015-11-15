@@ -41,21 +41,6 @@ func main() {
 		log.SetLevel(log.ErrorLevel)
 	}
 
-	if *daemonize {
-		//syslog loggigng if daemonize
-		syslogOutput, err := logrus_syslog.NewSyslogHook("", "", syslog.LOG_INFO|syslog.LOG_DAEMON, "")
-		if err != nil {
-			log.Error("Unable to setup syslog output")
-		}
-		log.AddHook(syslogOutput)
-
-		log.SetFormatter(new(MyFormatter))
-
-		log.SetOutput(ioutil.Discard)
-
-		daemon(1, 1)
-	}
-
 	if *isServer {
 		config.readConfig(*cfgName)
 		log.Info("Starting in server mode.")

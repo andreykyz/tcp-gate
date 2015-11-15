@@ -6,7 +6,6 @@ import (
 	log "github.com/Sirupsen/logrus"
 	"io"
 	"net"
-	"os"
 	"syscall"
 )
 
@@ -93,39 +92,4 @@ func copyData(conn1 *net.TCPConn, conn2 *net.TCPConn) {
 	}()
 
 	<-finished
-}
-
-//
-//	Following code copies semantics of daemon(3).
-//
-func daemon(nochdir, noclose int) int {
-	ret, _, err := syscall.Syscall(syscall.SYS_FORK, 0, 0, 0)
-	if err != 0 {
-		return -1
-	}
-	switch ret {
-	case 0:
-		break
-	default:
-		os.Exit(0)
-	}
-
-	if _, err := syscall.Setsid(); err != nil {
-		return -1
-	}
-	if nochdir == 0 {
-		os.Chdir("/")
-	}
-
-	if noclose == 0 {
-		f, e := os.OpenFile("/dev/null", os.O_RDWR, 0)
-		if e == nil {
-			fd := f.Fd()
-			syscall.Dup2(int(fd), int(os.Stdin.Fd()))
-			syscall.Dup2(int(fd), int(os.Stdout.Fd()))
-			syscall.Dup2(int(fd), int(os.Stderr.Fd()))
-		}
-	}
-
-	return 0
 }
