@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/md5"
 	"flag"
+	"fmt"
 	log "github.com/Sirupsen/logrus"
 	"gopkg.in/natefinch/lumberjack.v2"
 	"net"
@@ -21,6 +22,7 @@ var userId = flag.Int("userid", 0, "User id. (client mode only).")
 var passPhrase = flag.String("pass", "", "Passphrase. (client mode only).")
 var logLevel = flag.String("loglevel", "info", "Possible values: debug, info, warning, error")
 var logFile = flag.String("logfile", "", "Log file name.")
+var showVersion = flag.Bool("v", false, "Display version and exit.")
 
 func main() {
 	// Parse command line arguments.
@@ -37,6 +39,11 @@ func main() {
 	}
 	if *logLevel == "error" {
 		log.SetLevel(log.ErrorLevel)
+	}
+
+	if *showVersion {
+		fmt.Println("Version 1.1.")
+		return
 	}
 
 	if *logFile != "" {
