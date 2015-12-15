@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	log "github.com/Sirupsen/logrus"
 	"net"
+	"errors"
 )
 
 type ConnectionHeader struct {
@@ -15,6 +16,10 @@ type ConnectionHeader struct {
 	Port   uint16   // 32
 }
 
+type Response struct {
+	MAGIC [4]byte
+}
+
 func readHeader(conn *net.TCPConn) (hdr ConnectionHeader, err error) {
 	err = binary.Read(conn, binary.BigEndian, &hdr)
 	return
@@ -22,6 +27,23 @@ func readHeader(conn *net.TCPConn) (hdr ConnectionHeader, err error) {
 
 func sendHeader(conn *net.TCPConn, hdr ConnectionHeader) (err error) {
 	err = binary.Write(conn, binary.BigEndian, hdr)
+	return
+}
+
+func checkResponse(conn *net.TCPConn) (err error) {
+	var resp Response
+	err = binary.Read(conn, binary.BigEndian, &resp)
+	if err == nil {
+		if resp.MAGIC != [4]byte{73, 77, 67, 65} {
+			err = errors.New("Error response from server")
+		}
+	}
+	return err
+}
+
+func sendResponse(conn *net.TCPConn) (err error) {
+	resp := Response{MAGIC: [4]byte{73, 77, 67, 65}}
+	err = binary.Write(conn, binary.BigEndian, resp)
 	return
 }
 
@@ -48,6 +70,8 @@ func handleServer(conn *net.TCPConn) {
 		log.Errorf("id %d wrong hash %x", hdr.UserId, hdr.Md5Sum)
 		return
 	}
+
+	sendResponse(conn)
 
 	raddr := &net.TCPAddr{IP: net.IPv4(hdr.Addr4[0], hdr.Addr4[1], hdr.Addr4[2], hdr.Addr4[3]), Port: int(hdr.Port)}
 
@@ -90,6 +114,11 @@ func handleClient(conn *net.TCPConn) {
 
 	hdr := ConnectionHeader{MAGIC: [4]byte{73, 77, 67, 65}, UserId: uint32(*userId), Md5Sum: Md5Sum, OptLen: 0, Addr4: ipv4, Port: port}
 	sendHeader(remote, hdr)
+
+	err1 := checkResponse(remote)
+	if err1 != nil {
+		log.Error("Bad server response.")
+	}
 
 	copyData(conn, remote)
 }
