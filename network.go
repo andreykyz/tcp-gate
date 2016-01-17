@@ -2,9 +2,9 @@ package main
 
 import (
 	"encoding/binary"
+	"errors"
 	log "github.com/Sirupsen/logrus"
 	"net"
-	"errors"
 )
 
 type ConnectionHeader struct {
@@ -76,7 +76,7 @@ func handleServer(conn *net.TCPConn) {
 	raddr := &net.TCPAddr{IP: net.IPv4(hdr.Addr4[0], hdr.Addr4[1], hdr.Addr4[2], hdr.Addr4[3]), Port: int(hdr.Port)}
 
 	// Try to connect to remote server.
-	remote, err := net.DialTCP("tcp", nil, raddr)
+	remote, err := net.DialTCP("tcp4", nil, raddr)
 	if err != nil {
 		// Exit out when an error occurs
 		log.Errorf("Failed to connect to server: %v", err)
@@ -98,13 +98,13 @@ func handleClient(conn *net.TCPConn) {
 	defer conn.Close()
 	log.Infof("Original destination is %v:%d", ipv4, port)
 
-	raddr, err := net.ResolveTCPAddr("tcp", *proxyAddr)
+	raddr, err := net.ResolveTCPAddr("tcp4", *proxyAddr)
 	if err != nil {
 		log.Fatal("Failed to resolve: ", err)
 	}
 
 	// Try to connect to remote server.
-	remote, err := net.DialTCP("tcp", nil, raddr)
+	remote, err := net.DialTCP("tcp4", nil, raddr)
 	if err != nil {
 		// Exit out when an error occurs
 		log.Errorf("Failed to connect to server: %v", err)

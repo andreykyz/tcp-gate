@@ -69,12 +69,12 @@ func main() {
 		log.Infof("Proxy connecions to: %s", *proxyAddr)
 	}
 
-	laddr, err := net.ResolveTCPAddr("tcp", *listenAddr)
+	laddr, err := net.ResolveTCPAddr("tcp4", *listenAddr)
 	if err != nil {
 		log.Fatal("Failed to resolve: ", err)
 	}
 
-	listener, err := net.ListenTCP("tcp", laddr)
+	listener, err := net.ListenTCP("tcp4", laddr)
 	if listener == nil {
 		log.Fatal("Failed listen on address: ", err)
 	}
