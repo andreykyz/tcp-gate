@@ -5,15 +5,21 @@ import (
 	"errors"
 	log "github.com/Sirupsen/logrus"
 	"net"
+	"time"
 )
 
 type ConnectionHeader struct {
-	MAGIC  [4]byte  // 4
-	UserId uint32   // 8
-	Md5Sum [16]byte // 24
-	OptLen uint16   // 26
-	Addr4  [4]byte  // 30
-	Port   uint16   // 32
+	MAGIC      [4]byte  // 4
+	UserId     uint32   // 8
+	Md5Sum     [16]byte // 24
+	OptLen     uint16   // 26
+	Addr4      [4]byte  // 30
+	Port       uint16   // 32
+	SrcAddr4   [4]byte  // 36
+	SrcPort    uint16   // 38
+	SrcMac     [6]byte  // 44
+	LocalAddr4 [4]byte  // 48
+	LocalPort  uint16   // 50
 }
 
 type Response struct {
@@ -22,6 +28,10 @@ type Response struct {
 
 func readHeader(conn *net.TCPConn) (hdr ConnectionHeader, err error) {
 	err = binary.Read(conn, binary.BigEndian, &hdr)
+	if err != nil {
+		log.Error("Read header error", err)
+		return
+	}
 	return
 }
 
@@ -49,9 +59,17 @@ func sendResponse(conn *net.TCPConn) (err error) {
 
 func handleServer(conn *net.TCPConn) {
 	defer conn.Close()
+	var hdr ConnectionHeader
+	hdr, _ = readHeader(conn)
 
-	hdr, _ := readHeader(conn)
-
+	log.Infof("%s src %s:%d; dst %s:%d; proxy addr: %s:%d proxy src: %s proxy dst %s",
+		time.Now().Local().String(),                                                                    //date
+		net.IPv4(hdr.SrcAddr4[0], hdr.SrcAddr4[1], hdr.SrcAddr4[2], hdr.SrcAddr4[3]), int(hdr.SrcPort), //src ip1:port
+		net.IPv4(hdr.Addr4[0], hdr.Addr4[1], hdr.Addr4[2], hdr.Addr4[3]), int(hdr.Port), //dst ip5:port
+		net.IPv4(hdr.LocalAddr4[0], hdr.LocalAddr4[1], hdr.LocalAddr4[2], hdr.LocalAddr4[3]), int(hdr.LocalPort), //proxy addr: IP2:port
+		conn.RemoteAddr().String(), //proxy src: ip3:port
+		conn.LocalAddr().String(),  //proxy src: ip4:port
+	)
 	// Check user id and hash
 	if hdr.UserId > uint32(len(config.User)) {
 		log.Errorf("User with id %d so big", hdr.UserId)
@@ -88,6 +106,12 @@ func handleServer(conn *net.TCPConn) {
 }
 
 func handleClient(conn *net.TCPConn) {
+	srcPort := uint16(conn.RemoteAddr().(*net.TCPAddr).Port)
+	srcAddr4 := conn.RemoteAddr().(*net.TCPAddr).IP
+	srcAddr := [4]byte{srcAddr4[0], srcAddr4[1], srcAddr4[2], srcAddr4[3]}
+	localPort := uint16(conn.LocalAddr().(*net.TCPAddr).Port)
+	localAddr4 := conn.RemoteAddr().(*net.TCPAddr).IP
+	localAddr := [4]byte{localAddr4[0], localAddr4[1], localAddr4[2], localAddr4[3]}
 	ipv4, port, conn, err := getOriginalDst(conn)
 	if err != nil {
 		log.Errorf("handleConnection(): can not handle this connection, error occurred in getting original destination ip address/port: %v", err)
@@ -112,7 +136,13 @@ func handleClient(conn *net.TCPConn) {
 	}
 	defer remote.Close()
 
-	hdr := ConnectionHeader{MAGIC: [4]byte{73, 77, 67, 65}, UserId: uint32(*userId), Md5Sum: Md5Sum, OptLen: 0, Addr4: ipv4, Port: port}
+	hdr := ConnectionHeader{
+		MAGIC: [4]byte{73, 77, 67, 65}, UserId: uint32(*userId), Md5Sum: Md5Sum, OptLen: 0,
+		Addr4: ipv4, Port: port,
+		SrcAddr4: srcAddr, SrcPort: srcPort,
+		SrcMac:     [6]byte{0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
+		LocalAddr4: localAddr, LocalPort: localPort,
+	}
 	sendHeader(remote, hdr)
 
 	err1 := checkResponse(remote)

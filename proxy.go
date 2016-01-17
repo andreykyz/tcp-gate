@@ -90,7 +90,7 @@ func main() {
 		}
 
 		if *isServer {
-			go handleServer(conn)
+			handleServer(conn)
 		} else {
 			go handleClient(conn)
 		}
