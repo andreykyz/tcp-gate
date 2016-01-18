@@ -10,6 +10,7 @@ import (
 type UserConfig struct {
 	Name     string
 	Password string
+	Skipack  bool
 }
 
 type UserInfo struct {
@@ -17,6 +18,7 @@ type UserInfo struct {
 	Password string
 	hash     [16]byte
 	enabled  bool
+	Skipack  bool
 }
 
 type ServerInfo struct {
@@ -62,6 +64,7 @@ func (cfg *Configuration) readConfig(filename string) {
 		cfg.User[userId].Name = user.Name
 		cfg.User[userId].enabled = true
 		cfg.User[userId].hash = md5.Sum([]byte(user.Password))
-		log.Debugf("id %d user %s pass %s hash %x", userId, user.Name, user.Password, cfg.User[userId].hash)
+		cfg.User[userId].Skipack = user.Skipack
+		log.Debugf("id %d user %s pass %s hash %x skipAck %t", userId, user.Name, user.Password, cfg.User[userId].hash, cfg.User[userId].Skipack)
 	}
 }

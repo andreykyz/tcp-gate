@@ -88,8 +88,12 @@ func handleServer(conn *net.TCPConn) {
 		log.Errorf("id %d wrong hash %x", hdr.UserId, hdr.Md5Sum)
 		return
 	}
-
-	sendResponse(conn)
+	if config.User[hdr.UserId].Skipack {
+		log.Debugf("Ignore ack sending for user id %d name %s ", hdr.UserId, config.User[hdr.UserId].Name)
+	} else {
+		log.Debugf("Send ack for user id %d name %s ", hdr.UserId, config.User[hdr.UserId].Name)
+		sendResponse(conn)
+	}
 
 	raddr := &net.TCPAddr{IP: net.IPv4(hdr.Addr4[0], hdr.Addr4[1], hdr.Addr4[2], hdr.Addr4[3]), Port: int(hdr.Port)}
 
@@ -144,10 +148,12 @@ func handleClient(conn *net.TCPConn) {
 		LocalAddr4: localAddr, LocalPort: localPort,
 	}
 	sendHeader(remote, hdr)
-
-	err1 := checkResponse(remote)
-	if err1 != nil {
-		log.Error("Bad server response.")
+	if !*disableResp {
+		log.Debug("Check response")
+		err1 := checkResponse(remote)
+		if err1 != nil {
+			log.Error("Bad server response.")
+		}
 	}
 
 	copyData(conn, remote)

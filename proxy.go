@@ -23,6 +23,7 @@ var passPhrase = flag.String("pass", "", "Passphrase. (client mode only).")
 var logLevel = flag.String("loglevel", "info", "Possible values: debug, info, warning, error")
 var logFile = flag.String("logfile", "", "Log file name.")
 var showVersion = flag.Bool("v", false, "Display version and exit.")
+var disableResp = flag.Bool("r", false, "Disable check response")
 
 func main() {
 	// Parse command line arguments.
@@ -90,7 +91,7 @@ func main() {
 		}
 
 		if *isServer {
-			handleServer(conn)
+			go handleServer(conn)
 		} else {
 			go handleClient(conn)
 		}
