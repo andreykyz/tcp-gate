@@ -6,8 +6,17 @@ import (
 	log "github.com/Sirupsen/logrus"
 	"io"
 	"net"
+	"sync"
 	"syscall"
+	"time"
 )
+
+type Supervisor struct {
+	sync.Mutex
+	datath   int
+	dataStop int
+	timeout  int
+}
 
 const SO_ORIGINAL_DST = 80
 
@@ -76,20 +85,92 @@ func getOriginalDst(clientConn *net.TCPConn) (ipv4 [4]byte, port uint16, newTCPC
 	return
 }
 
-func copyData(conn1 *net.TCPConn, conn2 *net.TCPConn) {
+func Copy(dst io.Writer, src io.Reader, supervisor *Supervisor) (written int64, err error) {
+
+	buf := make([]byte, 32*1024)
+	for {
+		nr, er := src.Read(buf)
+		if nr > 0 {
+			nw, ew := dst.Write(buf[0:nr])
+			supervisor.Lock()
+			if supervisor.datath < supervisor.dataStop {
+				supervisor.datath += nw
+			}
+			supervisor.Unlock()
+			//			log.Debug("data ", nw, " ", nr, " ", supervisor.datath)
+
+			if nw > 0 {
+				written += int64(nw)
+			}
+			if ew != nil {
+				err = ew
+				break
+			}
+			if nr != nw {
+				err = io.ErrShortWrite
+				break
+			}
+		}
+		if er == io.EOF {
+			break
+		}
+		if er != nil {
+			err = er
+			break
+		}
+	}
+	return written, err
+}
+
+func copyData(conn1 *net.TCPConn, conn2 *net.TCPConn, userInfo *UserInfo) {
 	// I'm waiting on finished to be able to close
 	// connection correctly.
 	finished := make(chan bool, 2)
-
+	var supervisor *Supervisor
+	if userInfo != nil {
+		supervisor = &Supervisor{datath: 0, timeout: 0, dataStop: userInfo.Datath}
+	}
 	go func() {
-		io.Copy(conn1, conn2)
+		if userInfo == nil {
+			io.Copy(conn1, conn2)
+		} else {
+			Copy(conn1, conn2, supervisor)
+		}
 		finished <- true
 	}()
 
 	go func() {
-		io.Copy(conn2, conn1)
+		if userInfo == nil {
+			io.Copy(conn2, conn1)
+		} else {
+			Copy(conn2, conn1, supervisor)
+		}
 		finished <- true
 	}()
-
+	if userInfo != nil {
+		if userInfo.Timeout > 0 && userInfo.Datath > 0 {
+			for {
+				//				log.Debug("time ", supervisor.timeout, " data ", supervisor.datath)
+				supervisor.Lock()
+				if supervisor.timeout > userInfo.Timeout {
+					if supervisor.datath < userInfo.Datath {
+						return
+					} else {
+						supervisor.datath = 0
+						supervisor.timeout = 0
+					}
+				}
+				supervisor.Unlock()
+				select {
+				case <-finished:
+					return
+				default:
+					time.Sleep(1 * time.Second)
+					supervisor.timeout++
+					continue
+				}
+			}
+		}
+	}
 	<-finished
 }

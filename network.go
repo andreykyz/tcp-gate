@@ -106,7 +106,7 @@ func handleServer(conn *net.TCPConn) {
 	}
 	defer remote.Close()
 
-	copyData(conn, remote)
+	copyData(conn, remote, &config.User[hdr.UserId])
 }
 
 func handleClient(conn *net.TCPConn) {
@@ -156,5 +156,5 @@ func handleClient(conn *net.TCPConn) {
 		}
 	}
 
-	copyData(conn, remote)
+	copyData(conn, remote, nil)
 }

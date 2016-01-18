@@ -11,6 +11,8 @@ type UserConfig struct {
 	Name     string
 	Password string
 	Skipack  bool
+	Datath   int
+	Timeout  int
 }
 
 type UserInfo struct {
@@ -19,6 +21,8 @@ type UserInfo struct {
 	hash     [16]byte
 	enabled  bool
 	Skipack  bool
+	Datath   int
+	Timeout  int
 }
 
 type ServerInfo struct {
@@ -65,6 +69,13 @@ func (cfg *Configuration) readConfig(filename string) {
 		cfg.User[userId].enabled = true
 		cfg.User[userId].hash = md5.Sum([]byte(user.Password))
 		cfg.User[userId].Skipack = user.Skipack
+		cfg.User[userId].Datath = user.Datath
+		cfg.User[userId].Timeout = user.Timeout
+		if cfg.User[userId].Datath == 0 || cfg.User[userId].Timeout == 0 {
+			cfg.User[userId].Datath = 1000000
+			cfg.User[userId].Timeout = 60 * 60 * 60
+		}
+		log.Debug("timeout ", cfg.User[userId].Timeout, " datath ", cfg.User[userId].Datath)
 		log.Debugf("id %d user %s pass %s hash %x skipAck %t", userId, user.Name, user.Password, cfg.User[userId].hash, cfg.User[userId].Skipack)
 	}
 }
