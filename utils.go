@@ -97,7 +97,7 @@ func Copy(dst io.Writer, src io.Reader, supervisor *Supervisor) (written int64, 
 				supervisor.datath += nw
 			}
 			supervisor.Unlock()
-			//			log.Debug("data ", nw, " ", nr, " ", supervisor.datath)
+			//log.Debug("data ", nw, " ", nr, " ", supervisor.datath, "data stop ", supervisor.dataStop)
 
 			if nw > 0 {
 				written += int64(nw)
@@ -150,7 +150,7 @@ func copyData(conn1 *net.TCPConn, conn2 *net.TCPConn, userInfo *UserInfo) {
 	if userInfo != nil {
 		if userInfo.Timeout > 0 && userInfo.Datath > 0 {
 			for {
-				//				log.Debug("time ", supervisor.timeout, " data ", supervisor.datath)
+				//log.Debug("time ", supervisor.timeout, " time limit ", userInfo.Timeout, " data ", supervisor.datath, " data min ", userInfo.Datath)
 				supervisor.Lock()
 				if supervisor.timeout > userInfo.Timeout {
 					if supervisor.datath < userInfo.Datath {
