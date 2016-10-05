@@ -30,6 +30,32 @@ const (
 	URG = 32 // 10 0000
 )
 
+/*
+ *    TCP option from include/net/tcp.h of linux kernel
+ *    http://www.iana.org/assignments/tcp-parameters/tcp-parameters.xhtml
+ */
+
+const (
+	TCPOPT_NOP       = 1   // Padding */
+	TCPOPT_EOL       = 0   // End of options */
+	TCPOPT_MSS       = 2   // Segment size negotiating */
+	TCPOPT_WINDOW    = 3   // Window scaling */
+	TCPOPT_SACK_PERM = 4   // SACK Permitted */
+	TCPOPT_SACK      = 5   // SACK Block */
+	TCPOPT_TIMESTAMP = 8   // Better RTT estimations/PAWS */
+	TCPOPT_MD5SIG    = 19  // MD5 Signature (RFC2385) */
+	TCPOPT_MPTCP     = 30  //
+	TCPOPT_FASTOPEN  = 34  // Fast open (RFC7413) */
+	TCPOPT_EXP       = 254 // Experimental */
+)
+
+/* Magic number to be after the option value for sharing TCP
+ * experimental options. See draft-ietf-tcpm-experimental-options-00.txt
+ */
+const (
+	TCPOPT_FASTOPEN_MAGIC = 0xF989
+)
+
 type TCPHeader struct {
 	Source      uint16
 	Destination uint16
