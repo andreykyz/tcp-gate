@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	log "github.com/Sirupsen/logrus"
+	tuntap "github.com/songgao/water"
 	"gopkg.in/natefinch/lumberjack.v2"
 	"net"
 	"os"
@@ -81,6 +82,14 @@ func main() {
 	}
 	defer listener.Close()
 
+	iface, err := tuntap.NewTUN("")
+	if err != nil {
+		log.Fatal("Failed to open tun device ", err)
+		return
+	}
+	defer iface.Close()
+	tunBuf := make([]byte, 1522)
+
 	for {
 		conn, err := listener.AcceptTCP()
 		if conn == nil {
@@ -93,7 +102,7 @@ func main() {
 		if *isServer {
 			go handleServer(conn)
 		} else {
-			go handleClient(conn)
+			go handleClient(conn, iface, &tunBuf)
 		}
 	}
 }

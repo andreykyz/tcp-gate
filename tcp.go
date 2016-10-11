@@ -19,6 +19,11 @@ package main
 import (
 	"bytes"
 	"encoding/binary"
+	"log"
+	"math/rand"
+	"net"
+	"strconv"
+	"strings"
 )
 
 const (
@@ -143,7 +148,7 @@ func (tcp *TCPHeader) Marshal() []byte {
 }
 
 // TCP Checksum
-func Csum(data []byte, srcip, dstip [4]byte) uint16 {
+func Csum(data []byte, srcip, dstip net.IP) uint16 {
 
 	pseudoHeader := []byte{
 		srcip[0], srcip[1], srcip[2], srcip[3],
@@ -176,4 +181,68 @@ func Csum(data []byte, srcip, dstip [4]byte) uint16 {
 
 	// Bitwise complement
 	return uint16(^sum)
+}
+
+func to4byte(addr string) [4]byte {
+	parts := strings.Split(addr, ".")
+	b0, err := strconv.Atoi(parts[0])
+	if err != nil {
+		log.Fatalf("to4byte: %s (latency works with IPv4 addresses only, but not IPv6!)\n", err)
+	}
+	b1, _ := strconv.Atoi(parts[1])
+	b2, _ := strconv.Atoi(parts[2])
+	b3, _ := strconv.Atoi(parts[3])
+	return [4]byte{byte(b0), byte(b1), byte(b2), byte(b3)}
+}
+
+func sendTcpSyn(src net.IP, dst net.IP, port uint16) []byte {
+
+	tcpHeader := TCPHeader{
+		Source:      1001, // Random ephemeral port
+		Destination: port,
+		SeqNum:      rand.Uint32(), // initial seg num
+		AckNum:      0,
+		DataOffset:  5,      // 4 bits
+		Reserved:    0,      // 3 bits
+		ECN:         0,      // 3 bits
+		Ctrl:        2,      // 6 bits (000010, SYN bit set)
+		Window:      0xaaaa, // The amount of data that it is able to accept in bytes
+		Checksum:    0,      // Kernel will set this if it's 0
+		Urgent:      0,
+		Options:     []TCPOption{},
+	}
+	data := tcpHeader.Marshal()
+	tcpHeader.Checksum = Csum(data, src, dst)
+	data = tcpHeader.Marshal()
+
+	ipHeader := &Header{
+		Version:  Version,
+		Len:      HeaderLen,
+		TOS:      0,
+		TotalLen: HeaderLen,    //must be calc later
+		ID:       0x0000,       //must be increment by 1 (uniq per packet)
+		Flags:    DontFragment, //syn packet must be DONT FRAGMENT
+		FragOff:  0x0000,       //this field use for ip packet fragmentation
+		TTL:      64,
+		Protocol: 6, // 6 means tcp
+		Checksum: 0, //calc later
+		Src:      src,
+		Dst:      dst,
+	}
+
+	data, _ = ipHeader.Marshal()
+	var checkSum uint32
+	checkSum = 0
+	for i := 0; i+1 < ipHeader.Len; i += 2 {
+		checkSum += uint32(uint16(data[i])<<8 | uint16(data[i+1]))
+	}
+	if checkSum > 0xffff {
+		checkSum = (checkSum >> 16) + (checkSum & 0xffff)
+		if checkSum > 0xffff {
+			checkSum = (checkSum >> 16) + (checkSum & 0xffff)
+		}
+	}
+	ipHeader.Checksum = ^uint16(checkSum)
+	data, _ = ipHeader.Marshal()
+	return data
 }

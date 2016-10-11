@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"errors"
 	log "github.com/Sirupsen/logrus"
+	tuntap "github.com/songgao/water"
 	"net"
 	"time"
 )
@@ -109,7 +110,7 @@ func handleServer(conn *net.TCPConn) {
 	copyData(conn, remote, &config.User[hdr.UserId])
 }
 
-func handleClient(conn *net.TCPConn) {
+func handleClient(conn *net.TCPConn, iface *tuntap.Interface, tunBuf *[]byte) {
 	srcPort := uint16(conn.RemoteAddr().(*net.TCPAddr).Port)
 	srcAddr4 := conn.RemoteAddr().(*net.TCPAddr).IP
 	srcAddr := [4]byte{srcAddr4[0], srcAddr4[1], srcAddr4[2], srcAddr4[3]}
@@ -131,6 +132,8 @@ func handleClient(conn *net.TCPConn) {
 		log.Fatal("Failed to resolve: ", err)
 	}
 
+	iface.Write(sendTcpSyn(net.IPv4(1, 0, 0, 2), net.IPv4(1, 0, 0, 1), 1008))
+	//	iface.Write([]byte{0x01, 0x02})
 	// Try to connect to remote server.
 	remote, err := net.DialTCP("tcp4", nil, raddr)
 	if err != nil {
