@@ -132,7 +132,6 @@ func handleClient(conn *net.TCPConn, iface *tuntap.Interface, tunBuf *[]byte) {
 		log.Fatal("Failed to resolve: ", err)
 	}
 
-	iface.Write(sendTcpSyn(net.IPv4(1, 0, 0, 2), net.IPv4(1, 0, 0, 1), 1008))
 	//	iface.Write([]byte{0x01, 0x02})
 	// Try to connect to remote server.
 	remote, err := net.DialTCP("tcp4", nil, raddr)

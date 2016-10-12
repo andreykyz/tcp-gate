@@ -19,6 +19,7 @@ package main
 import (
 	"bytes"
 	"encoding/binary"
+	tuntap "github.com/songgao/water"
 	"log"
 	"math/rand"
 	"net"
@@ -61,6 +62,9 @@ const (
 	TCPOPT_FASTOPEN_MAGIC = 0xF989
 )
 
+type UserSpaceTCPconn struct {
+	iface *tuntap.Interface
+}
 type TCPHeader struct {
 	Source      uint16
 	Destination uint16
@@ -213,7 +217,6 @@ func sendTcpSyn(src net.IP, dst net.IP, port uint16) []byte {
 	}
 	data := tcpHeader.Marshal()
 	tcpHeader.Checksum = Csum(data, src, dst)
-	data = tcpHeader.Marshal()
 
 	ipHeader := &Header{
 		Version:  Version,
@@ -244,5 +247,12 @@ func sendTcpSyn(src net.IP, dst net.IP, port uint16) []byte {
 	}
 	ipHeader.Checksum = ^uint16(checkSum)
 	data, _ = ipHeader.Marshal()
+	data = append(data, tcpHeader.Marshal()...)
 	return data
+}
+
+func (conn UserSpaceTCPconn) DialUserSpaceTCP(src net.IP, dst net.IP, port uint16) {
+
+	conn.iface.Write(sendTcpSyn(src, dst, port))
+
 }
