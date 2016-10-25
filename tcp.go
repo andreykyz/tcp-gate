@@ -19,12 +19,12 @@ package main
 import (
 	"bytes"
 	"encoding/binary"
-	tuntap "github.com/songgao/water"
+	"io"
 	"log"
 	"math/rand"
 	"net"
-	"strconv"
-	"strings"
+
+	tuntap "github.com/songgao/water"
 )
 
 const (
@@ -62,28 +62,39 @@ const (
 	TCPOPT_FASTOPEN_MAGIC = 0xF989
 )
 
-type UserSpaceTCPconn struct {
-	iface *tuntap.Interface
-}
-type TCPHeader struct {
-	Source      uint16
-	Destination uint16
-	SeqNum      uint32
-	AckNum      uint32
-	DataOffset  uint8 // 4 bits
-	Reserved    uint8 // 3 bits
-	ECN         uint8 // 3 bits
-	Ctrl        uint8 // 6 bits
-	Window      uint16
-	Checksum    uint16 // Kernel will set this if it's 0
-	Urgent      uint16
-	Options     []TCPOption
+const (
+	NET_PORT_AMOUNT = 65536
+)
+
+type TcpState int
+
+const (
+	TCP_STATE_CONNECT     TcpState = 0
+	TCP_STATE_SYN_SENT    TcpState = 1
+	TCP_STATE_ACK_WAIT    TcpState = 2
+	TCP_STATE_ESTABLISHED TcpState = 3
+)
+
+type TCPConnHash struct {
+	hash [12]byte
 }
 
-type TCPOption struct {
-	Kind   uint8
-	Length uint8
-	Data   []byte
+type TCPConnPool struct {
+	iface       *tuntap.Interface
+	ifaceIP     net.IP
+	portUsing   []bool
+	connHashMap map[TCPConnHash]*TCPConnUserSpace
+}
+
+type TCPConnUserSpace struct {
+	iface     *tuntap.Interface
+	srcAddr   *net.TCPAddr
+	dstAddr   *net.TCPAddr
+	readChan  chan []byte
+	writeChan chan []byte
+	connHash  [12]byte
+	done      bool
+	tcpState  TcpState
 }
 
 // Parse packet into TCPHeader structure
@@ -109,101 +120,11 @@ func NewTCPHeader(data []byte) *TCPHeader {
 	return &tcp
 }
 
-func (tcp *TCPHeader) HasFlag(flagBit byte) bool {
-	return tcp.Ctrl&flagBit != 0
-}
-
-func (tcp *TCPHeader) Marshal() []byte {
-
-	buf := new(bytes.Buffer)
-	binary.Write(buf, binary.BigEndian, tcp.Source)
-	binary.Write(buf, binary.BigEndian, tcp.Destination)
-	binary.Write(buf, binary.BigEndian, tcp.SeqNum)
-	binary.Write(buf, binary.BigEndian, tcp.AckNum)
-
-	var mix uint16
-	mix = uint16(tcp.DataOffset)<<12 | // top 4 bits
-		uint16(tcp.Reserved)<<9 | // 3 bits
-		uint16(tcp.ECN)<<6 | // 3 bits
-		uint16(tcp.Ctrl) // bottom 6 bits
-	binary.Write(buf, binary.BigEndian, mix)
-
-	binary.Write(buf, binary.BigEndian, tcp.Window)
-	binary.Write(buf, binary.BigEndian, tcp.Checksum)
-	binary.Write(buf, binary.BigEndian, tcp.Urgent)
-
-	for _, option := range tcp.Options {
-		binary.Write(buf, binary.BigEndian, option.Kind)
-		if option.Length > 1 {
-			binary.Write(buf, binary.BigEndian, option.Length)
-			binary.Write(buf, binary.BigEndian, option.Data)
-		}
-	}
-
-	out := buf.Bytes()
-
-	// Pad to min tcp header size, which is 20 bytes (5 32-bit words)
-	pad := 20 - len(out)
-	for i := 0; i < pad; i++ {
-		out = append(out, 0)
-	}
-
-	return out
-}
-
-// TCP Checksum
-func Csum(data []byte, srcip, dstip net.IP) uint16 {
-
-	pseudoHeader := []byte{
-		srcip[0], srcip[1], srcip[2], srcip[3],
-		dstip[0], dstip[1], dstip[2], dstip[3],
-		0,                  // zero
-		6,                  // protocol number (6 == TCP)
-		0, byte(len(data)), // TCP length (16 bits), not inc pseudo header
-	}
-
-	sumThis := make([]byte, 0, len(pseudoHeader)+len(data))
-	sumThis = append(sumThis, pseudoHeader...)
-	sumThis = append(sumThis, data...)
-	//fmt.Printf("% x\n", sumThis)
-
-	lenSumThis := len(sumThis)
-	var nextWord uint16
-	var sum uint32
-	for i := 0; i+1 < lenSumThis; i += 2 {
-		nextWord = uint16(sumThis[i])<<8 | uint16(sumThis[i+1])
-		sum += uint32(nextWord)
-	}
-	if lenSumThis%2 != 0 {
-		//fmt.Println("Odd byte")
-		sum += uint32(sumThis[len(sumThis)-1])
-	}
-
-	// Add back any carry, and any carry from adding the carry
-	sum = (sum >> 16) + (sum & 0xffff)
-	sum = sum + (sum >> 16)
-
-	// Bitwise complement
-	return uint16(^sum)
-}
-
-func to4byte(addr string) [4]byte {
-	parts := strings.Split(addr, ".")
-	b0, err := strconv.Atoi(parts[0])
-	if err != nil {
-		log.Fatalf("to4byte: %s (latency works with IPv4 addresses only, but not IPv6!)\n", err)
-	}
-	b1, _ := strconv.Atoi(parts[1])
-	b2, _ := strconv.Atoi(parts[2])
-	b3, _ := strconv.Atoi(parts[3])
-	return [4]byte{byte(b0), byte(b1), byte(b2), byte(b3)}
-}
-
-func sendTcpSyn(src net.IP, dst net.IP, port uint16) []byte {
+func getTcpSyn(srcAddr, dstAddr *net.TCPAddr) []byte {
 
 	tcpHeader := TCPHeader{
-		Source:      1001, // Random ephemeral port
-		Destination: port,
+		Source:      uint16(srcAddr.Port), // Random ephemeral port
+		Destination: uint16(dstAddr.Port),
 		SeqNum:      rand.Uint32(), // initial seg num
 		AckNum:      0,
 		DataOffset:  5,      // 4 bits
@@ -216,7 +137,7 @@ func sendTcpSyn(src net.IP, dst net.IP, port uint16) []byte {
 		Options:     []TCPOption{},
 	}
 	data := tcpHeader.Marshal()
-	tcpHeader.Checksum = Csum(data, src, dst)
+	tcpHeader.Checksum = Csum(data, srcAddr.IP, dstAddr.IP)
 
 	ipHeader := &Header{
 		Version:  Version,
@@ -229,8 +150,8 @@ func sendTcpSyn(src net.IP, dst net.IP, port uint16) []byte {
 		TTL:      64,
 		Protocol: 6, // 6 means tcp
 		Checksum: 0, //calc later
-		Src:      src,
-		Dst:      dst,
+		Src:      srcAddr.IP,
+		Dst:      dstAddr.IP,
 	}
 
 	data, _ = ipHeader.Marshal()
@@ -250,9 +171,98 @@ func sendTcpSyn(src net.IP, dst net.IP, port uint16) []byte {
 	data = append(data, tcpHeader.Marshal()...)
 	return data
 }
+func getTCPPool() *TCPConnPool {
+	pool := &TCPConnPool{connHashMap: make(map[TCPConnHash]*TCPConnUserSpace)}
+	var err error
+	pool.iface, err = tuntap.NewTUN("")
+	if err != nil {
+		log.Fatal("Failed to open tun device ", err)
+		return nil
+	}
+	defer pool.iface.Close()
 
-func (conn UserSpaceTCPconn) DialUserSpaceTCP(src net.IP, dst net.IP, port uint16) {
+	return pool
+}
 
-	conn.iface.Write(sendTcpSyn(src, dst, port))
+/**
+get uniq pair srcAddr/dstAddr
+*/
+func (pool *TCPConnPool) getSrcAddr(dstAddr *net.TCPAddr) *net.TCPAddr {
+	rndPort := rand.Int() % NET_PORT_AMOUNT
+	var srcAddr *net.TCPAddr
+	for i := 0; i < NET_PORT_AMOUNT; i++ { //look for free port for uniq srcAddr/dstAddr
+		rndPort++
+		if rndPort >= NET_PORT_AMOUNT {
+			rndPort = 0
+		}
+		srcAddr = &net.TCPAddr{IP: pool.ifaceIP, Port: rndPort}
+		if _, ok := pool.connHashMap[GetTCPConnHash(srcAddr, dstAddr)]; !ok {
+			break
+		}
+	}
+	return srcAddr
+}
 
+func (pool *TCPConnPool) DialUserSpaceTCP(dstAddr *net.TCPAddr) *TCPConnUserSpace {
+	srcAddr := pool.getSrcAddr(dstAddr)
+	conn := &TCPConnUserSpace{srcAddr: srcAddr, dstAddr: dstAddr, done: false, tcpState: TCP_STATE_CONNECT, iface: pool.iface}
+	//	conn.iface.Write(sendTcpSyn(srcAddr, dstAddr))
+
+	return conn
+
+}
+
+func (conn *TCPConnUserSpace) readLoop() {
+	buf := make([]byte, 32*1024)
+	conn.iface.Read(buf)
+
+	switch conn.tcpState {
+	case TCP_STATE_CONNECT:
+	case TCP_STATE_SYN_SENT:
+	}
+}
+
+func (conn *TCPConnUserSpace) writeLoop() {
+
+	switch conn.tcpState {
+	case TCP_STATE_CONNECT:
+		conn.iface.Write(getTcpSyn(conn.srcAddr, conn.dstAddr))
+	case TCP_STATE_SYN_SENT:
+
+	}
+
+}
+
+/**
+Get hash from srcAddr/dstAddr as [12]byte
+*/
+func GetTCPConnHash(addr1, addr2 *net.TCPAddr) TCPConnHash {
+	return TCPConnHash{hash: [12]byte{addr1.IP[0], addr1.IP[1], addr1.IP[2], addr1.IP[3],
+		byte(uint16(addr1.Port) >> 8), byte(uint16(addr1.Port) & 0xff),
+		addr2.IP[0], addr2.IP[1], addr2.IP[2], addr2.IP[3],
+		byte(uint16(addr2.Port) >> 8), byte(uint16(addr2.Port) & 0xff)}}
+
+}
+
+func (conn *TCPConnUserSpace) Read(p []byte) (n int, err error) {
+	if conn.done {
+		return 0, io.EOF
+	}
+	p = <-conn.readChan //32*1024 max
+	n = len(p)
+	return n, err
+}
+
+func (conn *TCPConnUserSpace) Write(p []byte) (n int, err error) {
+	if conn.done {
+		return 0, io.EOF
+	}
+	if len(p) > 32*1024 {
+		n = 32 * 1024
+		conn.writeChan <- p[:n]
+	} else {
+		conn.writeChan <- p //32*1024 max
+		n = len(p)
+	}
+	return n, err
 }

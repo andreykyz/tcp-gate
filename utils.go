@@ -3,12 +3,13 @@ package main
 import (
 	"errors"
 	"fmt"
-	log "github.com/Sirupsen/logrus"
 	"io"
 	"net"
 	"sync"
 	"syscall"
 	"time"
+
+	log "github.com/Sirupsen/logrus"
 )
 
 type Supervisor struct {
@@ -122,7 +123,7 @@ func Copy(dst io.Writer, src io.Reader, supervisor *Supervisor) (written int64, 
 	return written, err
 }
 
-func copyData(conn1 *net.TCPConn, conn2 *net.TCPConn, userInfo *UserInfo) {
+func copyData(conn1 *net.TCPConn, conn2 *io.ReadWriteCloser, userInfo *UserInfo) {
 	// I'm waiting on finished to be able to close
 	// connection correctly.
 	finished := make(chan bool, 2)
@@ -132,18 +133,18 @@ func copyData(conn1 *net.TCPConn, conn2 *net.TCPConn, userInfo *UserInfo) {
 	}
 	go func() {
 		if userInfo == nil {
-			io.Copy(conn1, conn2)
+			io.Copy(conn1, *conn2)
 		} else {
-			Copy(conn1, conn2, supervisor)
+			Copy(conn1, *conn2, supervisor)
 		}
 		finished <- true
 	}()
 
 	go func() {
 		if userInfo == nil {
-			io.Copy(conn2, conn1)
+			io.Copy(*conn2, conn1)
 		} else {
-			Copy(conn2, conn1, supervisor)
+			Copy(*conn2, conn1, supervisor)
 		}
 		finished <- true
 	}()

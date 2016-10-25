@@ -3,10 +3,10 @@ package main
 import (
 	"encoding/binary"
 	"errors"
-	log "github.com/Sirupsen/logrus"
-	tuntap "github.com/songgao/water"
 	"net"
 	"time"
+
+	log "github.com/Sirupsen/logrus"
 )
 
 type ConnectionHeader struct {
@@ -110,7 +110,7 @@ func handleServer(conn *net.TCPConn) {
 	copyData(conn, remote, &config.User[hdr.UserId])
 }
 
-func handleClient(conn *net.TCPConn, iface *tuntap.Interface, tunBuf *[]byte) {
+func handleClient(conn *net.TCPConn, pool *TCPConnPool) {
 	srcPort := uint16(conn.RemoteAddr().(*net.TCPAddr).Port)
 	srcAddr4 := conn.RemoteAddr().(*net.TCPAddr).IP
 	srcAddr := [4]byte{srcAddr4[0], srcAddr4[1], srcAddr4[2], srcAddr4[3]}
@@ -142,6 +142,8 @@ func handleClient(conn *net.TCPConn, iface *tuntap.Interface, tunBuf *[]byte) {
 	}
 	defer remote.Close()
 
+	remoteU := pool.DialUserSpaceTCP(raddr)
+
 	hdr := ConnectionHeader{
 		MAGIC: [4]byte{73, 77, 67, 65}, UserId: uint32(*userId), Md5Sum: Md5Sum, OptLen: 0,
 		Addr4: ipv4, Port: port,
@@ -158,5 +160,5 @@ func handleClient(conn *net.TCPConn, iface *tuntap.Interface, tunBuf *[]byte) {
 		}
 	}
 
-	copyData(conn, remote, nil)
+	copyData(conn, remoteU, nil)
 }

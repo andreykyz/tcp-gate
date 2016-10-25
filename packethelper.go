@@ -1,7 +1,9 @@
 package main
 
+/* try to without PacketHelper*/
 import (
 	"bytes"
+
 	tuntap "github.com/songgao/water"
 )
 

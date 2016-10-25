@@ -4,11 +4,13 @@ import (
 	"crypto/md5"
 	"flag"
 	"fmt"
-	log "github.com/Sirupsen/logrus"
-	tuntap "github.com/songgao/water"
-	"gopkg.in/natefinch/lumberjack.v2"
+	"math/rand"
 	"net"
 	"os"
+	"time"
+
+	log "github.com/Sirupsen/logrus"
+	"gopkg.in/natefinch/lumberjack.v2"
 )
 
 var config Configuration
@@ -81,14 +83,8 @@ func main() {
 		log.Fatal("Failed listen on address: ", err)
 	}
 	defer listener.Close()
-
-	iface, err := tuntap.NewTUN("")
-	if err != nil {
-		log.Fatal("Failed to open tun device ", err)
-		return
-	}
-	defer iface.Close()
-	tunBuf := make([]byte, 1522)
+	rand.Seed(time.Now().UTC().UnixNano())
+	pool := getTCPPool()
 
 	for {
 		conn, err := listener.AcceptTCP()
@@ -102,7 +98,7 @@ func main() {
 		if *isServer {
 			go handleServer(conn)
 		} else {
-			go handleClient(conn, iface, &tunBuf)
+			go handleClient(conn, pool)
 		}
 	}
 }
