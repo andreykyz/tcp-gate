@@ -40,39 +40,38 @@ const (
  *    TCP option from include/net/tcp.h of linux kernel
  *    http://www.iana.org/assignments/tcp-parameters/tcp-parameters.xhtml
  */
-
 const (
-	TCPOPT_NOP       = 1   // Padding */
-	TCPOPT_EOL       = 0   // End of options */
-	TCPOPT_MSS       = 2   // Segment size negotiating */
-	TCPOPT_WINDOW    = 3   // Window scaling */
-	TCPOPT_SACK_PERM = 4   // SACK Permitted */
-	TCPOPT_SACK      = 5   // SACK Block */
-	TCPOPT_TIMESTAMP = 8   // Better RTT estimations/PAWS */
-	TCPOPT_MD5SIG    = 19  // MD5 Signature (RFC2385) */
-	TCPOPT_MPTCP     = 30  //
-	TCPOPT_FASTOPEN  = 34  // Fast open (RFC7413) */
-	TCPOPT_EXP       = 254 // Experimental */
+	TCPOptNOP       = 1   // Padding */
+	TCPOptEOL       = 0   // End of options */
+	TCPOptMSS       = 2   // Segment size negotiating */
+	TCPOptWindow    = 3   // Window scaling */
+	TCPOptSACKPerm  = 4   // SACK Permitted */
+	TCPOptSACK      = 5   // SACK Block */
+	TCPOptTimeStamp = 8   // Better RTT estimations/PAWS */
+	TCPOptMD5Sig    = 19  // MD5 Signature (RFC2385) */
+	TCPOptMPTCP     = 30  //
+	TCPOptFastOpen  = 34  // Fast open (RFC7413) */
+	TCPOptExp       = 254 // Experimental */
 )
 
 /* Magic number to be after the option value for sharing TCP
  * experimental options. See draft-ietf-tcpm-experimental-options-00.txt
  */
 const (
-	TCPOPT_FASTOPEN_MAGIC = 0xF989
+	TCPOptFastOpenMagic = 0xF989
 )
 
 const (
-	NET_PORT_AMOUNT = 65536
+	NetPortAmount = 65536
 )
 
 type TcpState int
 
 const (
-	TCP_STATE_CONNECT     TcpState = 0
-	TCP_STATE_SYN_SENT    TcpState = 1
-	TCP_STATE_ACK_WAIT    TcpState = 2
-	TCP_STATE_ESTABLISHED TcpState = 3
+	TCPStateConnect     TcpState = 0
+	TCPStateSYNSent     TcpState = 1
+	TCPStateACKWait     TcpState = 2
+	TCPStateEstablished TcpState = 3
 )
 
 type TCPConnHash struct {
@@ -120,7 +119,7 @@ func NewTCPHeader(data []byte) *TCPHeader {
 	return &tcp
 }
 
-func getTcpSyn(srcAddr, dstAddr *net.TCPAddr) []byte {
+func getTCPSyn(srcAddr, dstAddr *net.TCPAddr) []byte {
 
 	tcpHeader := TCPHeader{
 		Source:      uint16(srcAddr.Port), // Random ephemeral port
@@ -188,11 +187,11 @@ func getTCPPool() *TCPConnPool {
 get uniq pair srcAddr/dstAddr
 */
 func (pool *TCPConnPool) getSrcAddr(dstAddr *net.TCPAddr) *net.TCPAddr {
-	rndPort := rand.Int() % NET_PORT_AMOUNT
+	rndPort := rand.Int() % NetPortAmount
 	var srcAddr *net.TCPAddr
-	for i := 0; i < NET_PORT_AMOUNT; i++ { //look for free port for uniq srcAddr/dstAddr
+	for i := 0; i < NetPortAmount; i++ { //look for free port for uniq srcAddr/dstAddr
 		rndPort++
-		if rndPort >= NET_PORT_AMOUNT {
+		if rndPort >= NetPortAmount {
 			rndPort = 0
 		}
 		srcAddr = &net.TCPAddr{IP: pool.ifaceIP, Port: rndPort}
@@ -205,7 +204,7 @@ func (pool *TCPConnPool) getSrcAddr(dstAddr *net.TCPAddr) *net.TCPAddr {
 
 func (pool *TCPConnPool) DialUserSpaceTCP(dstAddr *net.TCPAddr) *TCPConnUserSpace {
 	srcAddr := pool.getSrcAddr(dstAddr)
-	conn := &TCPConnUserSpace{srcAddr: srcAddr, dstAddr: dstAddr, done: false, tcpState: TCP_STATE_CONNECT, iface: pool.iface}
+	conn := &TCPConnUserSpace{srcAddr: srcAddr, dstAddr: dstAddr, done: false, tcpState: TCPStateConnect, iface: pool.iface}
 	//	conn.iface.Write(sendTcpSyn(srcAddr, dstAddr))
 
 	return conn
@@ -217,17 +216,17 @@ func (conn *TCPConnUserSpace) readLoop() {
 	conn.iface.Read(buf)
 
 	switch conn.tcpState {
-	case TCP_STATE_CONNECT:
-	case TCP_STATE_SYN_SENT:
+	case TCPStateConnect:
+	case TCPStateSYNSent:
 	}
 }
 
 func (conn *TCPConnUserSpace) writeLoop() {
 
 	switch conn.tcpState {
-	case TCP_STATE_CONNECT:
-		conn.iface.Write(getTcpSyn(conn.srcAddr, conn.dstAddr))
-	case TCP_STATE_SYN_SENT:
+	case TCPStateConnect:
+		conn.iface.Write(getTCPSyn(conn.srcAddr, conn.dstAddr))
+	case TCPStateSYNSent:
 
 	}
 
@@ -265,4 +264,8 @@ func (conn *TCPConnUserSpace) Write(p []byte) (n int, err error) {
 		n = len(p)
 	}
 	return n, err
+}
+
+func (conn *TCPConnUserSpace) Close() (err error) {
+	return io.EOF
 }

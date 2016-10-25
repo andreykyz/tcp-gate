@@ -16,8 +16,9 @@ import (
 	"syscall"
 )
 
+// IP header const
 const (
-	Version      = 4  // protocol version
+	Version      = 4  // Version of protocol
 	HeaderLen    = 20 // header length without extension headers
 	maxHeaderLen = 60 // sensible default, revisit if later RFCs define new usage of version and header length fields
 )
@@ -38,8 +39,10 @@ var (
 	nativeEndian binary.ByteOrder
 )
 
+// HeaderFlags is const for header flag field see below
 type HeaderFlags int
 
+// const of HeaderFlags
 const (
 	MoreFragments HeaderFlags = 1 << iota // more fragments flag
 	DontFragment                          // don't fragment flag
@@ -62,6 +65,7 @@ type Header struct {
 	Options  []byte      // options, extension headers
 }
 
+// TCPHeader is struct for Marshal or UnMarshal header
 type TCPHeader struct {
 	Source      uint16
 	Destination uint16
@@ -72,11 +76,12 @@ type TCPHeader struct {
 	ECN         uint8 // 3 bits
 	Ctrl        uint8 // 6 bits
 	Window      uint16
-	Checksum    uint16 // Kernel will set this if it's 0
+	Checksum    uint16 // Kernel will set this if it's 0 but not in our situation
 	Urgent      uint16
 	Options     []TCPOption
 }
 
+// TCPOption is sequence which is end of TCPHeader
 type TCPOption struct {
 	Kind   uint8
 	Length uint8
@@ -132,7 +137,7 @@ func (tcp *TCPHeader) Marshal() []byte {
 	return out
 }
 
-// TCP Checksum
+// Csum is calculate TCP Checksum
 func Csum(data []byte, srcip, dstip net.IP) uint16 {
 
 	pseudoHeader := []byte{

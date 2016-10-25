@@ -11,7 +11,7 @@ import (
 
 type ConnectionHeader struct {
 	MAGIC      [4]byte  // 4
-	UserId     uint32   // 8
+	UserID     uint32   // 8
 	Md5Sum     [16]byte // 24
 	OptLen     uint16   // 26
 	Addr4      [4]byte  // 30
@@ -72,27 +72,27 @@ func handleServer(conn *net.TCPConn) {
 		conn.LocalAddr().String(),  //proxy src: ip4:port
 	)
 	// Check user id and hash
-	if hdr.UserId > uint32(len(config.User)) {
-		log.Errorf("User with id %d so big", hdr.UserId)
+	if hdr.UserID > uint32(len(config.User)) {
+		log.Errorf("User with id %d so big", hdr.UserID)
 		return
 	}
-	if !config.User[hdr.UserId].enabled {
-		log.Errorf("id %d not found", hdr.UserId)
+	if !config.User[hdr.UserID].enabled {
+		log.Errorf("id %d not found", hdr.UserID)
 		return
 	}
 
-	log.Debugf("User with id %d hash %x connecting", hdr.UserId, hdr.Md5Sum)
+	log.Debugf("User with id %d hash %x connecting", hdr.UserID, hdr.Md5Sum)
 
-	if config.User[hdr.UserId].hash == hdr.Md5Sum {
-		log.Debugf("User %s with id %d hash %x accepted", config.User[hdr.UserId].Name, hdr.UserId, hdr.Md5Sum)
+	if config.User[hdr.UserID].hash == hdr.Md5Sum {
+		log.Debugf("User %s with id %d hash %x accepted", config.User[hdr.UserID].Name, hdr.UserID, hdr.Md5Sum)
 	} else {
-		log.Errorf("id %d wrong hash %x", hdr.UserId, hdr.Md5Sum)
+		log.Errorf("id %d wrong hash %x", hdr.UserID, hdr.Md5Sum)
 		return
 	}
-	if config.User[hdr.UserId].Skipack {
-		log.Debugf("Ignore ack sending for user id %d name %s ", hdr.UserId, config.User[hdr.UserId].Name)
+	if config.User[hdr.UserID].Skipack {
+		log.Debugf("Ignore ack sending for user id %d name %s ", hdr.UserID, config.User[hdr.UserID].Name)
 	} else {
-		log.Debugf("Send ack for user id %d name %s ", hdr.UserId, config.User[hdr.UserId].Name)
+		log.Debugf("Send ack for user id %d name %s ", hdr.UserID, config.User[hdr.UserID].Name)
 		sendResponse(conn)
 	}
 
@@ -107,7 +107,7 @@ func handleServer(conn *net.TCPConn) {
 	}
 	defer remote.Close()
 
-	copyData(conn, remote, &config.User[hdr.UserId])
+	copyData(conn, remote, &config.User[hdr.UserID])
 }
 
 func handleClient(conn *net.TCPConn, pool *TCPConnPool) {
@@ -145,7 +145,7 @@ func handleClient(conn *net.TCPConn, pool *TCPConnPool) {
 	remoteU := pool.DialUserSpaceTCP(raddr)
 
 	hdr := ConnectionHeader{
-		MAGIC: [4]byte{73, 77, 67, 65}, UserId: uint32(*userId), Md5Sum: Md5Sum, OptLen: 0,
+		MAGIC: [4]byte{73, 77, 67, 65}, UserID: uint32(*userID), Md5Sum: Md5Sum, OptLen: 0,
 		Addr4: ipv4, Port: port,
 		SrcAddr4: srcAddr, SrcPort: srcPort,
 		SrcMac:     [6]byte{0x00, 0x00, 0x00, 0x00, 0x00, 0x00},

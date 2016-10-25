@@ -15,13 +15,14 @@ import (
 
 var config Configuration
 
+// Md5Sum is global var for client, calculated at start
 var Md5Sum [16]byte
 
 var isServer = flag.Bool("s", false, "Server mode.")
 var listenAddr = flag.String("lsnaddr", "localhost:10011", "Proxy listening address in both modes.")
 var proxyAddr = flag.String("proxyaddr", "localhost:10012", "Address to proxy connection to (client mode only).")
 var cfgName = flag.String("f", "example.conf", "Configuration file name (server mode only).")
-var userId = flag.Int("userid", 0, "User id. (client mode only).")
+var userID = flag.Int("userid", 0, "User id. (client mode only).")
 var passPhrase = flag.String("pass", "", "Passphrase. (client mode only).")
 var logLevel = flag.String("loglevel", "info", "Possible values: debug, info, warning, error")
 var logFile = flag.String("logfile", "", "Log file name.")

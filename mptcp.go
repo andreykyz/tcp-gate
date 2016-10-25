@@ -10,14 +10,14 @@ import (
 
 //RFC 6824
 const (
-	MP_CAPABLE   = 0x0 // Multipath Capable
-	MP_JOIN      = 0x1 // Join Connection
-	DSS          = 0x2 // Data Sequence Signal (Data ACK and data sequence mapping)
-	ADD_ADDR     = 0x3 // Add Address
-	REMOVE_ADDR  = 0x4 // Remove Address
-	MP_PRIO      = 0x5 // Change Subflow Priority
-	MP_FAIL      = 0x6 // Fallback
-	MP_FASTCLOSE = 0x7 // Fast Close
+	MPCapable   = 0x0 // Multipath Capable
+	MPJoin      = 0x1 // Join Connection
+	DSS         = 0x2 // Data Sequence Signal like tcp ACK (Data ACK and data sequence mapping)
+	AddAddr     = 0x3 // Add Address
+	RemoveAddr  = 0x4 // Remove Address
+	MPPrio      = 0x5 // Change Subflow Priority
+	MPFail      = 0x6 // Fallback
+	MPFastclose = 0x7 // Fast Close
 )
 
 func DialTCP(network string, laddr, raddr *net.TCPAddr) (*net.TCPConn, error) {

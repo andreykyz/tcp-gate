@@ -2,9 +2,10 @@ package main
 
 import (
 	md5 "crypto/md5"
+	"strconv"
+
 	log "github.com/Sirupsen/logrus"
 	gcfg "gopkg.in/gcfg.v1"
-	"strconv"
 )
 
 type UserConfig struct {
@@ -25,8 +26,9 @@ type UserInfo struct {
 	Timeout  int
 }
 
+// ServerInfo provide IP:Port to bind
 type ServerInfo struct {
-	Ip   string
+	IP   string
 	Port uint16
 }
 
@@ -46,10 +48,10 @@ func (cfg *Configuration) readConfig(filename string) {
 		log.Fatalf("Failed to parse gcfg data: %s", err)
 	}
 	id := uint32(0)
-	for userIdStr, _ := range cfg.config.User {
-		userId, _ := strconv.ParseUint(userIdStr, 10, 32)
-		if uint32(userId) > id {
-			id = uint32(userId)
+	for userIDStr, _ := range cfg.config.User {
+		userID, _ := strconv.ParseUint(userIDStr, 10, 32)
+		if uint32(userID) > id {
+			id = uint32(userID)
 		}
 	}
 	if id > idMax {
@@ -59,23 +61,23 @@ func (cfg *Configuration) readConfig(filename string) {
 	for _, user := range cfg.User {
 		user.enabled = false
 	}
-	for userIdStr, user := range cfg.config.User {
-		userId, _ := strconv.ParseUint(userIdStr, 10, 32)
-		if uint32(userId) > idMax {
-			log.Warningf("Skip user (%s) id(%u) more then %d", user.Name, userId, idMax)
+	for userIDStr, user := range cfg.config.User {
+		userID, _ := strconv.ParseUint(userIDStr, 10, 32)
+		if uint32(userID) > idMax {
+			log.Warningf("Skip user (%s) id(%u) more then %d", user.Name, userID, idMax)
 			continue
 		}
-		cfg.User[userId].Name = user.Name
-		cfg.User[userId].enabled = true
-		cfg.User[userId].hash = md5.Sum([]byte(user.Password))
-		cfg.User[userId].Skipack = user.Skipack
-		cfg.User[userId].Datath = user.Datath
-		cfg.User[userId].Timeout = user.Timeout
-		if cfg.User[userId].Datath == 0 || cfg.User[userId].Timeout == 0 {
-			cfg.User[userId].Datath = 1000000
-			cfg.User[userId].Timeout = 60 * 60 * 60
+		cfg.User[userID].Name = user.Name
+		cfg.User[userID].enabled = true
+		cfg.User[userID].hash = md5.Sum([]byte(user.Password))
+		cfg.User[userID].Skipack = user.Skipack
+		cfg.User[userID].Datath = user.Datath
+		cfg.User[userID].Timeout = user.Timeout
+		if cfg.User[userID].Datath == 0 || cfg.User[userID].Timeout == 0 {
+			cfg.User[userID].Datath = 1000000
+			cfg.User[userID].Timeout = 60 * 60 * 60
 		}
-		log.Debug("timeout ", cfg.User[userId].Timeout, " datath ", cfg.User[userId].Datath)
-		log.Debugf("id %d user %s pass %s hash %x skipAck %t", userId, user.Name, user.Password, cfg.User[userId].hash, cfg.User[userId].Skipack)
+		log.Debug("timeout ", cfg.User[userID].Timeout, " datath ", cfg.User[userID].Datath)
+		log.Debugf("id %d user %s pass %s hash %x skipAck %t", userID, user.Name, user.Password, cfg.User[userID].hash, cfg.User[userID].Skipack)
 	}
 }

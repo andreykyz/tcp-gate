@@ -19,12 +19,12 @@ type Supervisor struct {
 	timeout  int
 }
 
-const SO_ORIGINAL_DST = 80
-
 //
 //	Following code was copied from go-any-proxy.
 //
 func getOriginalDst(clientConn *net.TCPConn) (ipv4 [4]byte, port uint16, newTCPConn *net.TCPConn, err error) {
+	const SOOriginalDst = 80
+
 	if clientConn == nil {
 		err = errors.New("ERR: clientConn is nil")
 		return
@@ -57,7 +57,7 @@ func getOriginalDst(clientConn *net.TCPConn) (ipv4 [4]byte, port uint16, newTCPC
 	// Example result: &{Multiaddr:[2 0 31 144 206 190 36 45 0 0 0 0 0 0 0 0] Interface:0}
 	// port starts at the 3rd byte and is 2 bytes long (31 144 = port 8080)
 	// IPv4 address starts at the 5th byte, 4 bytes long (206 190 36 45)
-	addr, err := syscall.GetsockoptIPv6Mreq(int(clientConnFile.Fd()), syscall.IPPROTO_IP, SO_ORIGINAL_DST)
+	addr, err := syscall.GetsockoptIPv6Mreq(int(clientConnFile.Fd()), syscall.IPPROTO_IP, SOOriginalDst)
 	if err != nil {
 		log.Errorf("GETORIGINALDST|%v->?->FAILEDTOBEDETERMINED|ERR: getsocketopt(SO_ORIGINAL_DST) failed: %v", srcipport, err)
 		return
@@ -123,7 +123,7 @@ func Copy(dst io.Writer, src io.Reader, supervisor *Supervisor) (written int64, 
 	return written, err
 }
 
-func copyData(conn1 *net.TCPConn, conn2 *io.ReadWriteCloser, userInfo *UserInfo) {
+func copyData(conn1 io.ReadWriter, conn2 io.ReadWriter, userInfo *UserInfo) {
 	// I'm waiting on finished to be able to close
 	// connection correctly.
 	finished := make(chan bool, 2)
@@ -133,18 +133,18 @@ func copyData(conn1 *net.TCPConn, conn2 *io.ReadWriteCloser, userInfo *UserInfo)
 	}
 	go func() {
 		if userInfo == nil {
-			io.Copy(conn1, *conn2)
+			io.Copy(conn1, conn2)
 		} else {
-			Copy(conn1, *conn2, supervisor)
+			Copy(conn1, conn2, supervisor)
 		}
 		finished <- true
 	}()
 
 	go func() {
 		if userInfo == nil {
-			io.Copy(*conn2, conn1)
+			io.Copy(conn2, conn1)
 		} else {
-			Copy(*conn2, conn1, supervisor)
+			Copy(conn2, conn1, supervisor)
 		}
 		finished <- true
 	}()

@@ -4,6 +4,7 @@ import (
 	log "github.com/Sirupsen/logrus"
 )
 
+// MyFormatter for logs
 type MyFormatter struct {
 }
 
