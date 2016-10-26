@@ -151,9 +151,8 @@ func getTCPSyn(srcAddr, dstAddr *net.TCPAddr) []byte {
 		Urgent:      0,
 		Options:     []TCPOption{},
 	}
-	data := tcpHeader.Marshal()
-	tcpHeader.Checksum = Csum(data, srcAddr.IP, dstAddr.IP)
-
+	TCPData := tcpHeader.Marshal()
+	tcpCheckSum := Csum(TCPData, srcAddr.IP, dstAddr.IP)
 	ipHeader := &Header{
 		Version:  Version,
 		Len:      HeaderLen,
@@ -169,7 +168,15 @@ func getTCPSyn(srcAddr, dstAddr *net.TCPAddr) []byte {
 		Dst:      dstAddr.IP,
 	}
 
-	data, _ = ipHeader.Marshal()
+	data, _ := ipHeader.Marshal()
+	TCPData[16] = byte(tcpCheckSum >> 8)
+	TCPData[17] = byte(tcpCheckSum & 0xff)
+
+	data = append(data, TCPData...)
+	//full len calc
+	data[2] = byte(len(data) >> 8)
+	data[3] = byte(len(data) & 0xff)
+
 	var checkSum uint32
 	checkSum = 0
 	for i := 0; i+1 < ipHeader.Len; i += 2 {
@@ -181,9 +188,9 @@ func getTCPSyn(srcAddr, dstAddr *net.TCPAddr) []byte {
 			checkSum = (checkSum >> 16) + (checkSum & 0xffff)
 		}
 	}
-	ipHeader.Checksum = ^uint16(checkSum)
-	data, _ = ipHeader.Marshal()
-	data = append(data, tcpHeader.Marshal()...)
+	// calculate header Checksum at the end
+	data[10] = byte(^uint16(checkSum) >> 8)
+	data[11] = byte(^uint16(checkSum) & 0xff)
 	return data
 }
 func getTCPPool() *TCPConnPool {
@@ -207,10 +214,20 @@ func getTCPPool() *TCPConnPool {
 	ifn.port = 0
 	ifn.family = syscall.AF_INET
 	copy(ifn.ip[0:4], pool.ifaceIP.To4()[0:4])
-
+	ifn.ip[3]++
+	if ifn.ip[3] == 255 {
+		ifn.ip[3]++
+	}
+	if ifn.ip[3] == 0 {
+		ifn.ip[3]++
+	}
 	log.Info("tun name is ", pool.iface.Name(), " addr is ", pool.ifaceIP)
 
 	_, _, errno := syscall.Syscall(syscall.SYS_IOCTL, uintptr(fd), syscall.SIOCSIFADDR, uintptr(unsafe.Pointer(&ifn)))
+
+	copy(ifn.ip[0:4], pool.ifaceIP.To4()[0:4])
+
+	_, _, errno = syscall.Syscall(syscall.SYS_IOCTL, uintptr(fd), syscall.SIOCSIFDSTADDR, uintptr(unsafe.Pointer(&ifn)))
 
 	log.Debug(" SIOCSIFADDR called ")
 
@@ -255,7 +272,7 @@ func (pool *TCPConnPool) getSrcAddr(dstAddr *net.TCPAddr) *net.TCPAddr {
 func (pool *TCPConnPool) DialUserSpaceTCP(dstAddr *net.TCPAddr) *TCPConnUserSpace {
 	srcAddr := pool.getSrcAddr(dstAddr)
 	conn := &TCPConnUserSpace{srcAddr: srcAddr, dstAddr: dstAddr, done: false, tcpState: TCPStateConnect, iface: pool.iface}
-	//	conn.iface.Write(sendTcpSyn(srcAddr, dstAddr))
+	conn.iface.Write(getTCPSyn(srcAddr, dstAddr))
 
 	return conn
 

@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/binary"
 	"errors"
+	"io"
 	"net"
 	"time"
 
@@ -36,12 +37,12 @@ func readHeader(conn *net.TCPConn) (hdr ConnectionHeader, err error) {
 	return
 }
 
-func sendHeader(conn *net.TCPConn, hdr ConnectionHeader) (err error) {
+func sendHeader(conn io.Writer, hdr ConnectionHeader) (err error) {
 	err = binary.Write(conn, binary.BigEndian, hdr)
 	return
 }
 
-func checkResponse(conn *net.TCPConn) (err error) {
+func checkResponse(conn io.Reader) (err error) {
 	var resp Response
 	err = binary.Read(conn, binary.BigEndian, &resp)
 	if err == nil {
@@ -127,23 +128,13 @@ func handleClient(conn *net.TCPConn, pool *TCPConnPool) {
 	defer conn.Close()
 	log.Infof("Original destination is %v:%d", ipv4, port)
 
-	raddr, err := net.ResolveTCPAddr("tcp4", *proxyAddr)
-	if err != nil {
-		log.Fatal("Failed to resolve: ", err)
-	}
-
-	//	iface.Write([]byte{0x01, 0x02})
-	// Try to connect to remote server.
-	remote, err := net.DialTCP("tcp4", nil, raddr)
-	if err != nil {
-		// Exit out when an error occurs
-		log.Errorf("Failed to connect to server: %v", err)
-		return
-	}
-	defer remote.Close()
-
+	//	raddr, err := net.ResolveTCPAddr("tcp4", *proxyAddr)
+	//	if err != nil {
+	//		log.Fatal("Failed to resolve: ", err)
+	//	}
+	raddr := &net.TCPAddr{IP: net.IPv4(ipv4[0], ipv4[1], ipv4[2], ipv4[3]), Port: int(port)}
+	//	remoteU := pool.DialUserSpaceTCP(raddr)
 	remoteU := pool.DialUserSpaceTCP(raddr)
-
 	hdr := ConnectionHeader{
 		MAGIC: [4]byte{73, 77, 67, 65}, UserID: uint32(*userID), Md5Sum: Md5Sum, OptLen: 0,
 		Addr4: ipv4, Port: port,
@@ -151,10 +142,10 @@ func handleClient(conn *net.TCPConn, pool *TCPConnPool) {
 		SrcMac:     [6]byte{0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
 		LocalAddr4: localAddr, LocalPort: localPort,
 	}
-	sendHeader(remote, hdr)
+	sendHeader(remoteU, hdr)
 	if !*disableResp {
 		log.Debug("Check response")
-		err1 := checkResponse(remote)
+		err1 := checkResponse(remoteU)
 		if err1 != nil {
 			log.Error("Bad server response.")
 		}

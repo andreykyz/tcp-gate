@@ -141,8 +141,8 @@ func (tcp *TCPHeader) Marshal() []byte {
 func Csum(data []byte, srcip, dstip net.IP) uint16 {
 
 	pseudoHeader := []byte{
-		srcip[0], srcip[1], srcip[2], srcip[3],
-		dstip[0], dstip[1], dstip[2], dstip[3],
+		srcip.To4()[0], srcip.To4()[1], srcip.To4()[2], srcip.To4()[3],
+		dstip.To4()[0], dstip.To4()[1], dstip.To4()[2], dstip.To4()[3],
 		0,                  // zero
 		6,                  // protocol number (6 == TCP)
 		0, byte(len(data)), // TCP length (16 bits), not inc pseudo header
