@@ -20,9 +20,12 @@ import (
 	"bytes"
 	"encoding/binary"
 	"io"
-	"log"
 	"math/rand"
 	"net"
+	"syscall"
+	"unsafe"
+
+	log "github.com/Sirupsen/logrus"
 
 	tuntap "github.com/songgao/water"
 )
@@ -73,6 +76,19 @@ const (
 	TCPStateACKWait     TcpState = 2
 	TCPStateEstablished TcpState = 3
 )
+
+type iflags struct {
+	name  [syscall.IFNAMSIZ]byte //interface name
+	flags uint16                 //interface flags
+}
+
+type ifnet struct {
+	name   [syscall.IFNAMSIZ]byte //interface name
+	family int16                  //struct sockaddr
+	port   uint16                 //struct sockaddr
+	ip     [4]byte                //struct sockaddr
+	zero   [8]byte                //struct sockaddr
+}
 
 type TCPConnHash struct {
 	hash [12]byte
@@ -178,7 +194,41 @@ func getTCPPool() *TCPConnPool {
 		log.Fatal("Failed to open tun device ", err)
 		return nil
 	}
-	defer pool.iface.Close()
+	//	defer pool.iface.Close()
+
+	pool.ifaceIP = net.ParseIP(*tunIP)
+	fd, error := syscall.Socket(syscall.AF_INET, syscall.SOCK_DGRAM, 0)
+	if error == nil {
+		defer syscall.Close(fd)
+	}
+	log.Debug("socket open fd ", fd, " err ", error, " ")
+	var ifn ifnet
+	copy(ifn.name[:], pool.iface.Name())
+	ifn.port = 0
+	ifn.family = syscall.AF_INET
+	copy(ifn.ip[0:4], pool.ifaceIP.To4()[0:4])
+
+	log.Info("tun name is ", pool.iface.Name(), " addr is ", pool.ifaceIP)
+
+	_, _, errno := syscall.Syscall(syscall.SYS_IOCTL, uintptr(fd), syscall.SIOCSIFADDR, uintptr(unsafe.Pointer(&ifn)))
+
+	log.Debug(" SIOCSIFADDR called ")
+
+	log.Debug(errno.Error())
+
+	var ifl iflags
+	copy(ifl.name[:], ifn.name[:])
+
+	_, _, errno = syscall.Syscall(syscall.SYS_IOCTL, uintptr(fd), syscall.SIOCGIFFLAGS, uintptr(unsafe.Pointer(&ifl)))
+	log.Debugf(" SIOCGIFFLAGS called ")
+
+	ifl.flags |= syscall.IFF_UP | syscall.IFF_RUNNING //| syscall.IFF_NOARP | syscall.IFF_TUN
+
+	_, _, errno = syscall.Syscall(syscall.SYS_IOCTL, uintptr(fd), syscall.SIOCSIFFLAGS, uintptr(unsafe.Pointer(&ifl)))
+
+	log.Debugf(" SIOCSIFFLAGS called ")
+
+	log.Debugf(errno.Error())
 
 	return pool
 }
@@ -214,7 +264,8 @@ func (pool *TCPConnPool) DialUserSpaceTCP(dstAddr *net.TCPAddr) *TCPConnUserSpac
 func (conn *TCPConnUserSpace) readLoop() {
 	buf := make([]byte, 32*1024)
 	conn.iface.Read(buf)
-
+	h, _ := ParseHeader(buf)
+	log.Debug(h)
 	switch conn.tcpState {
 	case TCPStateConnect:
 	case TCPStateSYNSent:

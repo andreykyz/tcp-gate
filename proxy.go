@@ -20,6 +20,7 @@ var Md5Sum [16]byte
 
 var isServer = flag.Bool("s", false, "Server mode.")
 var listenAddr = flag.String("lsnaddr", "localhost:10011", "Proxy listening address in both modes.")
+var tunIP = flag.String("tunip", "77.66.11.33", "Ip for tun interface")
 var proxyAddr = flag.String("proxyaddr", "localhost:10012", "Address to proxy connection to (client mode only).")
 var cfgName = flag.String("f", "example.conf", "Configuration file name (server mode only).")
 var userID = flag.Int("userid", 0, "User id. (client mode only).")
@@ -86,7 +87,7 @@ func main() {
 	defer listener.Close()
 	rand.Seed(time.Now().UTC().UnixNano())
 	pool := getTCPPool()
-
+	defer pool.iface.Close()
 	for {
 		conn, err := listener.AcceptTCP()
 		if conn == nil {
