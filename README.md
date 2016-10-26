@@ -16,5 +16,9 @@ Command line arguments
 How to run
 ----------
 
-export GOPATH=/home/ilya/works/go
-go run proxy.go -s --lsnaddr="localhost:10012"
+proxy -s --lsnaddr="localhost:10012"
+
+redirect http:
+
+iptables -A OUTPUT -t nat -p tcp --dport 80 -j REDIRECT --to-port 10011
+iptables -A PREROUTING -t nat -p tcp --dport 80 -j REDIRECT --to-port 10011
