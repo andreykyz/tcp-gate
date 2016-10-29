@@ -90,15 +90,14 @@ type ifnet struct {
 	zero   [8]byte                //struct sockaddr
 }
 
-type TCPConnHash struct {
-	hash [12]byte
-}
+type TCPConnHash [12]byte
 
 type TCPConnPool struct {
 	iface       *tuntap.Interface
 	ifaceIP     net.IP
 	portUsing   []bool
 	connHashMap map[TCPConnHash]*TCPConnUserSpace
+	//	packetHelper PacketHelper
 }
 
 type TCPConnUserSpace struct {
@@ -247,6 +246,10 @@ func getTCPPool() *TCPConnPool {
 
 	log.Debugf(errno.Error())
 
+	//	pool.packetHelper = PacketHelper{iface: pool.iface}
+
+	//	go pool.packetHelper.ReadHelper()
+
 	return pool
 }
 
@@ -272,42 +275,52 @@ func (pool *TCPConnPool) getSrcAddr(dstAddr *net.TCPAddr) *net.TCPAddr {
 func (pool *TCPConnPool) DialUserSpaceTCP(dstAddr *net.TCPAddr) *TCPConnUserSpace {
 	srcAddr := pool.getSrcAddr(dstAddr)
 	conn := &TCPConnUserSpace{srcAddr: srcAddr, dstAddr: dstAddr, done: false, tcpState: TCPStateConnect, iface: pool.iface}
-	conn.iface.Write(getTCPSyn(srcAddr, dstAddr))
+	//chR := make(chan []byte)
+	//	chW := make(chan []byte)
+	//	pool.packetHelper.readChan.Lock()
+	//	pool.packetHelper.readChan.m[GetTCPConnHash(srcAddr, dstAddr)] = &chR
+	//	pool.packetHelper.readChan.Unlock()
 
+	go conn.readLoop()
+	go conn.writeLoop()
 	return conn
 
 }
 
 func (conn *TCPConnUserSpace) readLoop() {
-	buf := make([]byte, 32*1024)
-	conn.iface.Read(buf)
-	h, _ := ParseHeader(buf)
-	log.Debug(h)
-	switch conn.tcpState {
-	case TCPStateConnect:
-	case TCPStateSYNSent:
+	for {
+		buf := make([]byte, 32*1024)
+		conn.iface.Read(buf)
+		h, _ := ParseHeader(buf)
+		log.Debug(h)
+		switch conn.tcpState {
+		case TCPStateConnect:
+		case TCPStateSYNSent:
+		}
 	}
 }
 
 func (conn *TCPConnUserSpace) writeLoop() {
+	for {
+		switch conn.tcpState {
+		case TCPStateConnect:
+			conn.iface.Write(getTCPSyn(conn.srcAddr, conn.dstAddr))
+			conn.tcpState = TCPStateSYNSent
+		case TCPStateSYNSent:
+		case TCPStateEstablished:
 
-	switch conn.tcpState {
-	case TCPStateConnect:
-		conn.iface.Write(getTCPSyn(conn.srcAddr, conn.dstAddr))
-	case TCPStateSYNSent:
-
+		}
 	}
-
 }
 
 /**
-Get hash from srcAddr/dstAddr as [12]byte
+Get hash from srcAddr/dstAddr as [12]byte for outgoing packet
 */
-func GetTCPConnHash(addr1, addr2 *net.TCPAddr) TCPConnHash {
-	return TCPConnHash{hash: [12]byte{addr1.IP[0], addr1.IP[1], addr1.IP[2], addr1.IP[3],
-		byte(uint16(addr1.Port) >> 8), byte(uint16(addr1.Port) & 0xff),
+func GetTCPConnHash(addr2, addr1 *net.TCPAddr) TCPConnHash {
+	return TCPConnHash{addr1.IP[0], addr1.IP[1], addr1.IP[2], addr1.IP[3],
 		addr2.IP[0], addr2.IP[1], addr2.IP[2], addr2.IP[3],
-		byte(uint16(addr2.Port) >> 8), byte(uint16(addr2.Port) & 0xff)}}
+		byte(uint16(addr1.Port) >> 8), byte(uint16(addr1.Port) & 0xff),
+		byte(uint16(addr2.Port) >> 8), byte(uint16(addr2.Port) & 0xff)}
 
 }
 
