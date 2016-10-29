@@ -398,6 +398,33 @@ func (conn *TCPConnUserSpace) Close() (err error) {
 }
 
 func (conn *TCPConnUserSpace) GetPacket(h *Header, hTCP *TCPHeader, d []byte) (b []byte) {
+	TCPData := hTCP.Marshal()
+	tcpCheckSum := Csum(TCPData, conn.srcAddr.IP, conn.dstAddr.IP)
+	TCPData[16] = byte(tcpCheckSum >> 8)
+	TCPData[17] = byte(tcpCheckSum & 0xff)
+
+	b, _ = h.Marshal()
+
+	b = append(b, TCPData...)
+	b = append(b, d...)
+	//full len calc
+	b[2] = byte(len(b) >> 8)
+	b[3] = byte(len(b) & 0xff)
+
+	//Header checksum calc
+	checkSum := uint32(0)
+	for i := 0; i+1 < h.Len; i += 2 {
+		checkSum += uint32(uint16(b[i])<<8 | uint16(b[i+1]))
+	}
+	if checkSum > 0xffff {
+		checkSum = (checkSum >> 16) + (checkSum & 0xffff)
+		if checkSum > 0xffff {
+			checkSum = (checkSum >> 16) + (checkSum & 0xffff)
+		}
+	}
+	// calculate header Checksum at the end
+	b[10] = byte(^uint16(checkSum) >> 8)
+	b[11] = byte(^uint16(checkSum) & 0xff)
 
 	return b
 }
