@@ -67,18 +67,18 @@ type Header struct {
 
 // TCPHeader is struct for Marshal or UnMarshal header
 type TCPHeader struct {
-	Source      uint16
-	Destination uint16
-	SeqNum      uint32
-	AckNum      uint32
-	DataOffset  uint8 // 4 bits
-	Reserved    uint8 // 3 bits
-	ECN         uint8 // 3 bits
-	Ctrl        uint8 // 6 bits
-	Window      uint16
-	Checksum    uint16 // Kernel will set this if it's 0 but not in our situation
-	Urgent      uint16
-	Options     []TCPOption
+	SrcPort    uint16
+	DstPort    uint16
+	SeqNum     uint32
+	AckNum     uint32
+	DataOffset uint8 // 4 bits
+	Reserved   uint8 // 3 bits
+	ECN        uint8 // 3 bits
+	Ctrl       uint8 // 6 bits
+	Window     uint16
+	Checksum   uint16 // Kernel will set this if it's 0 but not in our situation
+	Urgent     uint16
+	Options    []TCPOption
 }
 
 // TCPOption is sequence which is end of TCPHeader
@@ -102,8 +102,8 @@ func (tcp *TCPHeader) HasFlag(flagBit byte) bool {
 func (tcp *TCPHeader) Marshal() []byte {
 
 	buf := new(bytes.Buffer)
-	binary.Write(buf, binary.BigEndian, tcp.Source)
-	binary.Write(buf, binary.BigEndian, tcp.Destination)
+	binary.Write(buf, binary.BigEndian, tcp.SrcPort)
+	binary.Write(buf, binary.BigEndian, tcp.DstPort)
 	binary.Write(buf, binary.BigEndian, tcp.SeqNum)
 	binary.Write(buf, binary.BigEndian, tcp.AckNum)
 
@@ -252,3 +252,40 @@ func ParseHeader(b []byte) (*Header, error) {
 	}
 	return h, nil
 }
+
+/*
+
+// Parse only needed set of fields
+func (t *TCPPacket) ParseFast() {
+	t.Seq = binary.BigEndian.Uint32(t.Data[4:8])
+	t.Ack = binary.BigEndian.Uint32(t.Data[8:12])
+
+	t.DataOffset = (t.Data[12] & 0xF0) >> 4
+	t.Data = t.Data[t.DataOffset*4:]
+}
+
+func (t *TCPPacket) String() string {
+	return strings.Join([]string{
+		"Source port: " + strconv.Itoa(int(t.SrcPort)),
+		"Dest port:" + strconv.Itoa(int(t.DestPort)),
+		"Sequence:" + strconv.Itoa(int(t.Seq)),
+		"Acknowledgement:" + strconv.Itoa(int(t.Ack)),
+		"Header len:" + strconv.Itoa(int(t.DataOffset)),
+
+		"Flag ns:" + strconv.FormatBool(t.Flags&TCP_NS != 0),
+		"Flag crw:" + strconv.FormatBool(t.Flags&TCP_CWR != 0),
+		"Flag ece:" + strconv.FormatBool(t.Flags&TCP_ECE != 0),
+		"Flag urg:" + strconv.FormatBool(t.Flags&TCP_URG != 0),
+		"Flag ack:" + strconv.FormatBool(t.Flags&TCP_ACK != 0),
+		"Flag psh:" + strconv.FormatBool(t.Flags&TCP_PSH != 0),
+		"Flag rst:" + strconv.FormatBool(t.Flags&TCP_RST != 0),
+		"Flag syn:" + strconv.FormatBool(t.Flags&TCP_SYN != 0),
+		"Flag fin:" + strconv.FormatBool(t.Flags&TCP_FIN != 0),
+
+		"Window size:" + strconv.Itoa(int(t.Window)),
+		"Checksum:" + strconv.Itoa(int(t.Checksum)),
+
+		"Data:" + string(t.Data),
+	}, "\n")
+}
+*/
