@@ -54,7 +54,7 @@ type Header struct {
 	Len      int         // header length
 	TOS      int         // type-of-service
 	TotalLen int         // packet total length
-	ID       int         // identification
+	ID       uint16      // identification
 	Flags    HeaderFlags // flags
 	FragOff  int         // fragment offset
 	TTL      int         // time-to-live

@@ -107,6 +107,7 @@ type TCPConnUserSpace struct {
 	dstAddr   *net.TCPAddr
 	SeqNum    uint32
 	AckNum    uint32
+	ID        uint16
 	readChan  chan []byte
 	writeChan chan []byte
 	connHash  [12]byte
@@ -166,7 +167,7 @@ func (h *TCPHeader) String() string {
 func (conn *TCPConnUserSpace) getTCPSyn() []byte {
 
 	tcpHeader := TCPHeader{
-		SrcPort:    uint16(conn.srcAddr.Port), // Random ephemeral port
+		SrcPort:    uint16(conn.srcAddr.Port),
 		DstPort:    uint16(conn.dstAddr.Port),
 		SeqNum:     conn.SeqNum, // initial seg num
 		AckNum:     conn.AckNum,
@@ -398,6 +399,36 @@ func (conn *TCPConnUserSpace) Close() (err error) {
 }
 
 func (conn *TCPConnUserSpace) GetPacket(h *Header, hTCP *TCPHeader, d []byte) (b []byte) {
+
+	conn.ID++
+
+	// IP Header
+	h.Version = Version
+	h.Len = HeaderLen
+	h.TOS = 0
+	h.ID = conn.ID
+	h.TTL = 64
+	h.Protocol = 6 // 6 means tcp
+	h.Src = conn.srcAddr.IP
+	h.Dst = conn.dstAddr.IP
+
+	// TCP Header
+	if len(d) > 0 {
+		conn.SeqNum += uint32(len(d))
+	} else {
+		conn.SeqNum++
+	}
+
+	hTCP.SrcPort = uint16(conn.srcAddr.Port)
+	hTCP.DstPort = uint16(conn.dstAddr.Port)
+	hTCP.SeqNum = conn.SeqNum
+	hTCP.AckNum = conn.AckNum
+	hTCP.DataOffset = 5
+	hTCP.Reserved = 0
+	hTCP.ECN = 0
+
+	hTCP.Urgent = 0
+
 	TCPData := hTCP.Marshal()
 	tcpCheckSum := Csum(TCPData, conn.srcAddr.IP, conn.dstAddr.IP)
 	TCPData[16] = byte(tcpCheckSum >> 8)
