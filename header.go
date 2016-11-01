@@ -79,6 +79,7 @@ type TCPHeader struct {
 	Checksum   uint16 // Kernel will set this if it's 0 but not in our situation
 	Urgent     uint16
 	Options    []TCPOption
+	Data       []byte
 }
 
 // TCPOption is sequence which is end of TCPHeader
@@ -108,10 +109,10 @@ func (tcp *TCPHeader) Marshal() []byte {
 	binary.Write(buf, binary.BigEndian, tcp.AckNum)
 
 	var mix uint16
-	mix = uint16(tcp.DataOffset)<<12 | // top 4 bits
+	mix = //uint16(tcp.DataOffset)<<12 | // top 4 bits
 		uint16(tcp.Reserved)<<9 | // 3 bits
-		uint16(tcp.ECN)<<6 | // 3 bits
-		uint16(tcp.Ctrl) // bottom 6 bits
+			uint16(tcp.ECN)<<6 | // 3 bits
+			uint16(tcp.Ctrl) // bottom 6 bits
 	binary.Write(buf, binary.BigEndian, mix)
 
 	binary.Write(buf, binary.BigEndian, tcp.Window)
@@ -128,12 +129,15 @@ func (tcp *TCPHeader) Marshal() []byte {
 
 	out := buf.Bytes()
 
-	// Pad to min tcp header size, which is 20 bytes (5 32-bit words)
-	pad := 20 - len(out)
-	for i := 0; i < pad; i++ {
+	// Padding
+	padding := len(out) % 4
+	for i := 0; i < padding; i++ {
 		out = append(out, 0)
 	}
 
+	out[12] = (out[12] & 0xff) | (byte(len(out)) << 2)
+
+	out = append(out, tcp.Data...)
 	return out
 }
 
@@ -233,7 +237,7 @@ func ParseHeader(b []byte) (*Header, error) {
 		Version:  int(b[0] >> 4),
 		Len:      hdrlen,
 		TOS:      int(b[1]),
-		ID:       int(binary.BigEndian.Uint16(b[4:6])),
+		ID:       binary.BigEndian.Uint16(b[4:6]),
 		TTL:      int(b[8]),
 		Protocol: int(b[9]),
 		Checksum: uint16(binary.BigEndian.Uint16(b[10:12])),

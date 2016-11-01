@@ -63,6 +63,7 @@ const (
  */
 const (
 	TCPOptFastOpenMagic = 0xF989
+	TCPInitCwnd         = 29200
 )
 
 const (
@@ -102,17 +103,20 @@ type TCPConnPool struct {
 }
 
 type TCPConnUserSpace struct {
-	iface     *tuntap.Interface
-	srcAddr   *net.TCPAddr
-	dstAddr   *net.TCPAddr
-	SeqNum    uint32
-	AckNum    uint32
-	ID        uint16
-	readChan  chan []byte
-	writeChan chan []byte
-	connHash  [12]byte
-	done      bool
-	tcpState  TcpState
+	iface       *tuntap.Interface
+	srcAddr     *net.TCPAddr
+	dstAddr     *net.TCPAddr
+	SeqNum      uint32
+	AckNum      uint32
+	ID          uint16
+	readChan    chan []byte
+	writeChan   chan []byte
+	connHash    [12]byte
+	done        bool
+	tcpState    TcpState
+	Window      uint16
+	WindowShift int
+	byteOnFly   int
 }
 
 // Parse packet into TCPHeader structure
@@ -171,12 +175,12 @@ func (conn *TCPConnUserSpace) getTCPSyn() []byte {
 		DstPort:    uint16(conn.dstAddr.Port),
 		SeqNum:     conn.SeqNum, // initial seg num
 		AckNum:     conn.AckNum,
-		DataOffset: 5,      // 4 bits
-		Reserved:   0,      // 3 bits
-		ECN:        0,      // 3 bits
-		Ctrl:       2,      // 6 bits (000010, SYN bit set)
-		Window:     0xaaaa, // The amount of data that it is able to accept in bytes
-		Checksum:   0,      // Kernel will set this if it's 0
+		DataOffset: 5,           // 4 bits
+		Reserved:   0,           // 3 bits
+		ECN:        0,           // 3 bits
+		Ctrl:       2,           // 6 bits (000010, SYN bit set)
+		Window:     conn.Window, // The amount of data that it is able to accept in bytes
+		Checksum:   0,           // Kernel will set this if it's 0
 		Urgent:     0,
 		Options:    []TCPOption{},
 	}
@@ -304,7 +308,7 @@ func (pool *TCPConnPool) getSrcAddr(dstAddr *net.TCPAddr) *net.TCPAddr {
 
 func (pool *TCPConnPool) DialUserSpaceTCP(dstAddr *net.TCPAddr) *TCPConnUserSpace {
 	srcAddr := pool.getSrcAddr(dstAddr)
-	conn := &TCPConnUserSpace{srcAddr: srcAddr, dstAddr: dstAddr, done: false, tcpState: TCPStateConnect, iface: pool.iface}
+	conn := &TCPConnUserSpace{srcAddr: srcAddr, dstAddr: dstAddr, done: false, tcpState: TCPStateConnect, iface: pool.iface, Window: TCPInitCwnd, SeqNum: rand.Uint32()}
 	//chR := make(chan []byte)
 	//	chW := make(chan []byte)
 	//	pool.packetHelper.readChan.Lock()
@@ -331,10 +335,19 @@ func (conn *TCPConnUserSpace) readLoop() {
 		switch conn.tcpState {
 		case TCPStateConnect:
 		case TCPStateSYNSent:
-			conn.AckNum = hTCP.AckNum
-			conn.SeqNum++
+			conn.AckNum = hTCP.SeqNum + 1
 			if ((hTCP.Ctrl & ACK) == ACK) && ((hTCP.Ctrl & SYN) == SYN) {
-				//conn.writeChan<-
+
+				h := &Header{}
+				opt := []TCPOption{{Kind: TCPOptMSS, Length: 4}}
+				opt[0].Data = make([]byte, 2)
+				binary.BigEndian.PutUint16(opt[0].Data, uint16(1500))
+				hTCP := &TCPHeader{
+					Ctrl:    ACK,
+					Options: opt,
+				}
+				p := conn.GetPacket(h, hTCP, nil)
+				conn.writeChan <- p
 			}
 		}
 	}
@@ -353,7 +366,12 @@ func (conn *TCPConnUserSpace) writeLoop() {
 			log.Debug("Send tcp header: ", hTCP)
 			conn.iface.Write(buf)
 			conn.tcpState = TCPStateSYNSent
-		case TCPStateSYNSent:
+		case TCPStateSYNSent: // ACK recv
+			h, _ := ParseHeader(buf)
+			log.Debug("Send ip header: ", h)
+			hTCP := ParseTCPHeader(buf[h.Len:])
+			log.Debug("Send tcp header: ", hTCP)
+			conn.iface.Write(buf)
 		case TCPStateEstablished:
 
 		}
@@ -411,22 +429,21 @@ func (conn *TCPConnUserSpace) GetPacket(h *Header, hTCP *TCPHeader, d []byte) (b
 	h.Protocol = 6 // 6 means tcp
 	h.Src = conn.srcAddr.IP
 	h.Dst = conn.dstAddr.IP
-
 	// TCP Header
-	if len(d) > 0 {
-		conn.SeqNum += uint32(len(d))
-	} else {
+	if d == nil {
 		conn.SeqNum++
+	} else {
+		conn.SeqNum += uint32(len(d))
 	}
 
 	hTCP.SrcPort = uint16(conn.srcAddr.Port)
 	hTCP.DstPort = uint16(conn.dstAddr.Port)
 	hTCP.SeqNum = conn.SeqNum
 	hTCP.AckNum = conn.AckNum
-	hTCP.DataOffset = 5
+	//	hTCP.DataOffset = 5
 	hTCP.Reserved = 0
 	hTCP.ECN = 0
-
+	hTCP.Window = conn.Window
 	hTCP.Urgent = 0
 
 	TCPData := hTCP.Marshal()
@@ -435,7 +452,6 @@ func (conn *TCPConnUserSpace) GetPacket(h *Header, hTCP *TCPHeader, d []byte) (b
 	TCPData[17] = byte(tcpCheckSum & 0xff)
 
 	b, _ = h.Marshal()
-
 	b = append(b, TCPData...)
 	b = append(b, d...)
 	//full len calc
