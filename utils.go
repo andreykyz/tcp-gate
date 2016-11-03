@@ -132,22 +132,24 @@ func copyData(conn1 io.ReadWriter, conn2 io.ReadWriter, userInfo *UserInfo) {
 		supervisor = &Supervisor{datath: 0, timeout: 0, dataStop: userInfo.Datath}
 	}
 	go func() {
-		if userInfo == nil {
-			io.Copy(conn1, conn2)
-		} else {
-			Copy(conn1, conn2, supervisor)
-		}
+		//	if userInfo == nil {
+		io.Copy(conn1, conn2)
+		//	} else {
+		//		Copy(conn1, conn2, supervisor)
+		//	}
 		finished <- true
 	}()
 
 	go func() {
-		if userInfo == nil {
-			io.Copy(conn2, conn1)
-		} else {
-			Copy(conn2, conn1, supervisor)
-		}
+		//	if userInfo == nil {
+		io.Copy(conn2, conn1)
+		//	} else {
+		//		Copy(conn2, conn1, supervisor)
+		//	}
 		finished <- true
 	}()
+	<-finished
+	return
 	if userInfo != nil {
 		if userInfo.Timeout > 0 && userInfo.Datath > 0 {
 			for {

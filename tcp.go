@@ -321,6 +321,7 @@ func (pool *TCPConnPool) DialUserSpaceTCP(dstAddr *net.TCPAddr) *TCPConnUserSpac
 	//	pool.packetHelper.readChan.Unlock()
 	conn.writePacketChan = make(chan []byte, 1)
 	conn.writeDataChan = make(chan []byte, 1)
+	conn.readChan = make(chan []byte, 1)
 
 	log.Debug("writePacketChan is writing")
 	conn.writePacketChan <- conn.getTCPSyn()
@@ -345,7 +346,6 @@ func (conn *TCPConnUserSpace) readLoop(stopChan chan struct{}) { //need to imple
 		buf := make([]byte, 32*1024)
 		conn.iface.Read(buf)
 		h, _ := ParseHeader(buf)
-		log.Debug("readLoop Recv packet len: ", len(buf))
 		log.Debug("readLoop Recv ip header: ", h)
 		hTCP := ParseTCPHeader(buf[h.Len:])
 		log.Debug("readLoop Recv tcp header: ", hTCP)
@@ -357,8 +357,14 @@ func (conn *TCPConnUserSpace) readLoop(stopChan chan struct{}) { //need to imple
 			offset := h.Len + int(hTCP.DataOffset<<2)
 			log.Debug("readLoop data len: ", h.TotalLen-offset)
 			if len(buf) > offset {
+				log.Debug("readLoop write readChan")
 				conn.readChan <- buf[offset:h.TotalLen]
+				log.Debug("readLoop written readChan")
 			}
+			var null []byte
+			log.Debug("readLoop writeDataChan notify 1")
+			conn.writeDataChan <- null
+			log.Debug("readLoop writeDataChan notify 2")
 		case TCPStateSYNSent:
 			if ((hTCP.Ctrl & ACK) == ACK) && ((hTCP.Ctrl & SYN) == SYN) {
 				//conn.AckNum = conn.RecvAckNum
@@ -428,7 +434,7 @@ func (conn *TCPConnUserSpace) writeDataLoop(stopChan chan struct{}) {
 				}
 				h := &Header{}
 				hTCP := &TCPHeader{
-					Ctrl: PSH,
+					Ctrl: 0,
 				}
 				if conn.SentAckNum != conn.RecvAckNum { //need to sync
 					conn.SentAckNum = conn.RecvAckNum
@@ -470,8 +476,10 @@ func (conn *TCPConnUserSpace) Read(p []byte) (n int, err error) {
 	if conn.done {
 		return 0, io.EOF
 	}
+	log.Debug("read")
 	p = <-conn.readChan //32*1024 max
 	n = len(p)
+	log.Debug("read len ", n)
 	return n, err
 }
 
@@ -536,17 +544,17 @@ func (conn *TCPConnUserSpace) GetPacket(h *Header, hTCP *TCPHeader, d []byte) (b
 		}
 		conn.SeqNum += uint32(h.TotalLen - (20 + len(TCPData)))
 		binary.BigEndian.PutUint32(TCPData[4:8], conn.SeqNum)
+		TCPData = append(TCPData, d...)
 	} else {
 		h.TotalLen = h.Len + len(TCPData)
 	}
-
 	tcpCheckSum := Csum(TCPData, conn.srcAddr.IP, conn.dstAddr.IP)
 	TCPData[16] = byte(tcpCheckSum >> 8)
 	TCPData[17] = byte(tcpCheckSum & 0xff)
 
 	b, _ = h.Marshal()
 	b = append(b, TCPData...)
-	b = append(b, d...)
+	//	b = append(b, d...)
 
 	//full len calc
 	//	b[2] = byte(len(b) >> 8)
