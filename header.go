@@ -9,11 +9,12 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"log"
 	"net"
 	"strconv"
 	"strings"
 	"syscall"
+
+	log "github.com/Sirupsen/logrus"
 )
 
 // IP header const
@@ -160,18 +161,17 @@ func Csum(data []byte, srcip, dstip net.IP) uint16 {
 	lenSumThis := len(sumThis)
 	var nextWord uint16
 	var sum uint32
-	for i := 0; i+1 < lenSumThis; i += 2 {
+	for i := 0; i < lenSumThis-1; i += 2 {
 		nextWord = uint16(sumThis[i])<<8 | uint16(sumThis[i+1])
 		sum += uint32(nextWord)
 	}
 	if lenSumThis%2 != 0 {
-		//fmt.Println("Odd byte")
-		sum += uint32(sumThis[len(sumThis)-1])
+		log.Debug("Odd byte")
+		sum += uint32(sumThis[len(sumThis)-1]) << 8
 	}
 
 	// Add back any carry, and any carry from adding the carry
-	sum = (sum >> 16) + (sum & 0xffff)
-	sum = sum + (sum >> 16)
+	sum = (sum >> 16) + (sum & 0xffff) // worked for lenSumThis <= 1500
 
 	// Bitwise complement
 	return uint16(^sum)

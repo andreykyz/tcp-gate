@@ -351,11 +351,11 @@ func (conn *TCPConnUserSpace) readLoop(stopChan chan struct{}) { //need to imple
 		log.Debug("readLoop Recv tcp header: ", hTCP)
 		switch conn.tcpState {
 		case TCPStateEstablished:
-			if (hTCP.Ctrl & ACK) == ACK {
-				conn.RecvAckNum = hTCP.SeqNum // need to sync
-			}
 			offset := h.Len + int(hTCP.DataOffset<<2)
 			log.Debug("readLoop data len: ", h.TotalLen-offset)
+			if (hTCP.Ctrl & ACK) == ACK {
+				conn.RecvAckNum += uint32(offset) // need to sync
+			}
 			if len(buf) > offset {
 				log.Debug("readLoop write readChan")
 				conn.readChan <- buf[offset:h.TotalLen]
@@ -543,7 +543,7 @@ func (conn *TCPConnUserSpace) GetPacket(h *Header, hTCP *TCPHeader, d []byte) (b
 			h.TotalLen = conn.minMSS
 		}
 		conn.SeqNum += uint32(h.TotalLen - (20 + len(TCPData)))
-		binary.BigEndian.PutUint32(TCPData[4:8], conn.SeqNum)
+		//		binary.BigEndian.PutUint32(TCPData[4:8], conn.SeqNum)
 		TCPData = append(TCPData, d...)
 	} else {
 		h.TotalLen = h.Len + len(TCPData)
