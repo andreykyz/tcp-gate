@@ -112,12 +112,12 @@ func handleServer(conn *net.TCPConn) {
 }
 
 func handleClient(conn *net.TCPConn, pool *TCPConnPool) {
-	srcPort := uint16(conn.RemoteAddr().(*net.TCPAddr).Port)
-	srcAddr4 := conn.RemoteAddr().(*net.TCPAddr).IP
-	srcAddr := [4]byte{srcAddr4[0], srcAddr4[1], srcAddr4[2], srcAddr4[3]}
-	localPort := uint16(conn.LocalAddr().(*net.TCPAddr).Port)
-	localAddr4 := conn.RemoteAddr().(*net.TCPAddr).IP
-	localAddr := [4]byte{localAddr4[0], localAddr4[1], localAddr4[2], localAddr4[3]}
+	//	srcPort := uint16(conn.RemoteAddr().(*net.TCPAddr).Port)
+	//	srcAddr4 := conn.RemoteAddr().(*net.TCPAddr).IP
+	//	srcAddr := [4]byte{srcAddr4[0], srcAddr4[1], srcAddr4[2], srcAddr4[3]}
+	//	localPort := uint16(conn.LocalAddr().(*net.TCPAddr).Port)
+	//	localAddr4 := conn.RemoteAddr().(*net.TCPAddr).IP
+	//	localAddr := [4]byte{localAddr4[0], localAddr4[1], localAddr4[2], localAddr4[3]}
 	ipv4, port, conn, err := getOriginalDst(conn)
 	if err != nil {
 		log.Errorf("handleConnection(): can not handle this connection, error occurred in getting original destination ip address/port: %v", err)
@@ -135,21 +135,21 @@ func handleClient(conn *net.TCPConn, pool *TCPConnPool) {
 	raddr := &net.TCPAddr{IP: net.IPv4(ipv4[0], ipv4[1], ipv4[2], ipv4[3]), Port: int(port)}
 	//	remoteU := pool.DialUserSpaceTCP(raddr)
 	remoteU := pool.DialUserSpaceTCP(raddr)
-	hdr := ConnectionHeader{
-		MAGIC: [4]byte{73, 77, 67, 65}, UserID: uint32(*userID), Md5Sum: Md5Sum, OptLen: 0,
-		Addr4: ipv4, Port: port,
-		SrcAddr4: srcAddr, SrcPort: srcPort,
-		SrcMac:     [6]byte{0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
-		LocalAddr4: localAddr, LocalPort: localPort,
-	}
-	sendHeader(remoteU, hdr)
-	if !*disableResp {
-		log.Debug("Check response")
-		err1 := checkResponse(remoteU)
-		if err1 != nil {
-			log.Error("Bad server response.")
+	/*	hdr := ConnectionHeader{
+			MAGIC: [4]byte{73, 77, 67, 65}, UserID: uint32(*userID), Md5Sum: Md5Sum, OptLen: 0,
+			Addr4: ipv4, Port: port,
+			SrcAddr4: srcAddr, SrcPort: srcPort,
+			SrcMac:     [6]byte{0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
+			LocalAddr4: localAddr, LocalPort: localPort,
 		}
-	}
-
+			sendHeader(remoteU, hdr)
+		if !*disableResp {
+			log.Debug("Check response")
+			err1 := checkResponse(remoteU)
+			if err1 != nil {
+				log.Error("Bad server response.")
+			}
+		}
+	*/
 	copyData(conn, remoteU, nil)
 }
