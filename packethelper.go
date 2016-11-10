@@ -2,19 +2,20 @@ package main
 
 /* try to without PacketHelper*/
 import (
-	"bytes"
 	"errors"
 	"sync"
+
+	log "github.com/Sirupsen/logrus"
 
 	tuntap "github.com/songgao/water"
 )
 
 type PacketHelper struct {
 	iface     *tuntap.Interface
-	writeChan map[[12]byte]*chan []byte
+	writeChan map[[12]byte]chan []byte
 	readChan  struct {
 		sync.RWMutex
-		m map[[12]byte]*chan []byte
+		m map[[12]byte]chan []byte
 	}
 	stopHelper chan bool
 }
@@ -26,7 +27,7 @@ func (helper *PacketHelper) WriteHelper() {
 			return
 		default:
 			select {
-			case packet := <-(*packetChan):
+			case packet := <-packetChan:
 				helper.iface.Write(packet)
 			default:
 				//nothink
@@ -34,7 +35,11 @@ func (helper *PacketHelper) WriteHelper() {
 		}
 	}
 }
-
+func (helper *PacketHelper) AddReadChan(c chan []byte, hash [12]byte) {
+	helper.readChan.Lock()
+	helper.readChan.m[hash] = c
+	helper.readChan.Unlock()
+}
 func (helper *PacketHelper) ReadHelper() {
 	for {
 		select {
@@ -43,28 +48,40 @@ func (helper *PacketHelper) ReadHelper() {
 		default:
 			// Do other stuff
 		}
+		buf := make([]byte, 32*1024)
 
-		buf := new(bytes.Buffer)
-		buf.ReadFrom(helper.iface)
-		hash, dropLen, err := getPacketHash(buf.Bytes())
-		if err != nil {
+		//buf := new(bytes.Buffer)
+		log.Debug("Interface ", helper.iface.Name(), " reading...")
+		helper.iface.Read(buf)
+		log.Debug("Interface ", helper.iface.Name(), " just read")
+		hash, _, err := getPacketHash(buf)
+		if err != nil { // if packet is bad, continue
+			log.Debug("Interface ", helper.iface, " read error ", err)
 			continue
 		}
+		h, _ := ParseHeader(buf)
+		log.Debug("Read from ", helper.iface.Name())
+		log.Debug("ReadHelper ", h)
+		hTCP := ParseTCPHeader(buf[h.Len:])
+		log.Debug("ReadHelper ", hTCP)
+
 		helper.readChan.RLock()
 		ch, ok := helper.readChan.m[hash]
 		if !ok {
-			helper.readChan.Unlock()
+			log.Debug("Hash ", hash, " error ", err)
+			helper.readChan.RUnlock() // if conn not found, continue
 			continue
 		}
-		*ch <- buf.Bytes()[dropLen:]
-		helper.readChan.Unlock()
+		ch <- buf //[dropLen:] todo we need to once header parce
+		helper.readChan.RUnlock()
 
 	}
 }
 
 func (helper *PacketHelper) StartHelper() {
+	helper.readChan.m = make(map[[12]byte]chan []byte)
 	go helper.ReadHelper()
-	go helper.WriteHelper()
+	//	go helper.WriteHelper()
 }
 
 func (helper *PacketHelper) StopHelper() {
