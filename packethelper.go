@@ -4,6 +4,7 @@ package main
 import (
 	"errors"
 	"sync"
+	"time"
 
 	log "github.com/Sirupsen/logrus"
 
@@ -51,29 +52,31 @@ func (helper *PacketHelper) ReadHelper() {
 		buf := make([]byte, 32*1024)
 
 		//buf := new(bytes.Buffer)
-		log.Debug("Interface ", helper.iface.Name(), " reading...")
+		//		log.Debug("Interface ", helper.iface.Name(), " reading...")
 		helper.iface.Read(buf)
-		log.Debug("Interface ", helper.iface.Name(), " just read")
+		time.Sleep(1 * time.Second)
+		//		log.Debug("Interface ", helper.iface.Name(), " just read")
 		hash, _, err := getPacketHash(buf)
 		if err != nil { // if packet is bad, continue
 			log.Debug("Interface ", helper.iface, " read error ", err)
 			continue
 		}
-		h, _ := ParseHeader(buf)
-		log.Debug("Read from ", helper.iface.Name())
-		log.Debug("ReadHelper ", h)
-		hTCP := ParseTCPHeader(buf[h.Len:])
-		log.Debug("ReadHelper ", hTCP)
-
+		/*		h, _ := ParseHeader(buf)
+				log.Debug("Read from ", helper.iface.Name())
+				log.Debug("ReadHelper ", h)
+				hTCP := ParseTCPHeader(buf[h.Len:])
+				log.Debug("ReadHelper ", hTCP)
+		*/
 		helper.readChan.RLock()
 		ch, ok := helper.readChan.m[hash]
 		if !ok {
-			log.Debug("Hash ", hash, " error ", err)
+			//			log.Debug("Hash ", hash, " error ", err)
 			helper.readChan.RUnlock() // if conn not found, continue
 			continue
 		}
 		ch <- buf //[dropLen:] todo we need to once header parce
 		helper.readChan.RUnlock()
+		log.Debug("Read from ", helper.iface.Name(), " packet hash ", hash)
 
 	}
 }

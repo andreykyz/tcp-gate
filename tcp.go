@@ -320,6 +320,9 @@ func (pool *TCPConnPool) DialUserSpaceTCP(dstAddr *net.TCPAddr) *TCPConnUserSpac
 	//	pool.packetHelper.readChan.Lock()
 	//	pool.packetHelper.readChan.m[GetTCPConnHash(srcAddr, dstAddr)] = &chR
 	//	pool.packetHelper.readChan.Unlock()
+	log.Debug("DialUserSpaceTCP srcAddr ", srcAddr, " dstAddr ", dstAddr)
+
+	log.Debug("DialUserSpaceTCP new conn hash is : ", conn.connHash)
 	conn.writePacketChan = make(chan []byte, 1)
 	conn.writeDataChan = make(chan []byte, 1)
 	conn.readChan = make(chan []byte, 1)
@@ -347,7 +350,7 @@ func (pool *TCPConnPool) DialUserSpaceTCP(dstAddr *net.TCPAddr) *TCPConnUserSpac
 
 func (conn *TCPConnUserSpace) readLoop(stopChan chan struct{}) { //need to implement stopChan
 	for {
-
+		log.Debug("readLoop reading from readPacketChan...")
 		buf := <-conn.readPacketChan
 		//		conn.iface.Read(buf)
 		h, _ := ParseHeader(buf)
@@ -470,10 +473,11 @@ func (conn *TCPConnUserSpace) writeDataLoop(stopChan chan struct{}) {
 Get hash from srcAddr/dstAddr as [12]byte for outgoing packet
 */
 func GetTCPConnHash(addr2, addr1 *net.TCPAddr) TCPConnHash {
-	return TCPConnHash{addr1.IP[0], addr1.IP[1], addr1.IP[2], addr1.IP[3],
-		addr2.IP[0], addr2.IP[1], addr2.IP[2], addr2.IP[3],
-		byte(uint16(addr1.Port) >> 8), byte(uint16(addr1.Port) & 0xff),
-		byte(uint16(addr2.Port) >> 8), byte(uint16(addr2.Port) & 0xff)}
+	hash := TCPConnHash{8: byte(uint16(addr1.Port) >> 8), 9: byte(uint16(addr1.Port) & 0xff),
+		10: byte(uint16(addr2.Port) >> 8), 11: byte(uint16(addr2.Port) & 0xff)}
+	copy(hash[0:4], addr1.IP.To4()[0:4])
+	copy(hash[4:8], addr2.IP.To4()[0:4])
+	return hash
 
 }
 
