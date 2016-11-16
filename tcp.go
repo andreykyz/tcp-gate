@@ -23,6 +23,7 @@ import (
 	"io"
 	"math/rand"
 	"net"
+	"sync"
 	"syscall"
 	"unsafe"
 
@@ -103,14 +104,20 @@ type TCPConnPool struct {
 }
 
 type TCPConnUserSpace struct {
-	iface           *tuntap.Interface
-	srcAddr         *net.TCPAddr
-	dstAddr         *net.TCPAddr
-	SeqNum          uint32
-	SentAckNum      uint32
-	RecvSeqNum      uint32
-	RecvNextSeqNum  uint32
-	ID              uint16
+	iface   *tuntap.Interface
+	srcAddr *net.TCPAddr
+	dstAddr *net.TCPAddr
+	shared  struct {
+		sync.RWMutex
+		SeqNum         uint32
+		SentAckNum     uint32
+		RecvSeqNum     uint32
+		RecvNextSeqNum uint32
+		ID             uint16
+		Window         uint16
+		WindowShift    int
+		byteOnFly      int
+	}
 	readChan        chan []byte
 	readPacketChan  chan []byte
 	writePacketChan chan []byte
@@ -118,11 +125,8 @@ type TCPConnUserSpace struct {
 	connHash        [12]byte
 	done            bool
 	stopChans       []chan struct{} // we need to use this slice for stop all goroutines
-	tcpState        TcpState
-	Window          uint16
-	WindowShift     int
-	byteOnFly       int
 	minMSS          int
+	tcpState        TcpState
 }
 
 // Parse packet into TCPHeader structure
@@ -179,14 +183,14 @@ func (conn *TCPConnUserSpace) getTCPSyn() []byte {
 	tcpHeader := TCPHeader{
 		SrcPort:    uint16(conn.srcAddr.Port),
 		DstPort:    uint16(conn.dstAddr.Port),
-		SeqNum:     conn.SeqNum, // initial seg num
-		AckNum:     conn.SentAckNum,
-		DataOffset: 5,           // 4 bits
-		Reserved:   0,           // 3 bits
-		ECN:        0,           // 3 bits
-		Ctrl:       2,           // 6 bits (000010, SYN bit set)
-		Window:     conn.Window, // The amount of data that it is able to accept in bytes
-		Checksum:   0,           // Kernel will set this if it's 0
+		SeqNum:     conn.shared.SeqNum, // initial seg num
+		AckNum:     conn.shared.SentAckNum,
+		DataOffset: 5,                  // 4 bits
+		Reserved:   0,                  // 3 bits
+		ECN:        0,                  // 3 bits
+		Ctrl:       2,                  // 6 bits (000010, SYN bit set)
+		Window:     conn.shared.Window, // The amount of data that it is able to accept in bytes
+		Checksum:   0,                  // Kernel will set this if it's 0
 		Urgent:     0,
 		Options:    []TCPOption{},
 	}
@@ -314,7 +318,9 @@ func (pool *TCPConnPool) getSrcAddr(dstAddr *net.TCPAddr) *net.TCPAddr {
 
 func (pool *TCPConnPool) DialUserSpaceTCP(dstAddr *net.TCPAddr) *TCPConnUserSpace {
 	srcAddr := pool.getSrcAddr(dstAddr)
-	conn := &TCPConnUserSpace{srcAddr: srcAddr, dstAddr: dstAddr, done: false, tcpState: TCPStateConnect, iface: pool.iface, Window: TCPInitCwnd, SeqNum: rand.Uint32(), minMSS: 1460, connHash: GetTCPConnHash(srcAddr, dstAddr)}
+	conn := &TCPConnUserSpace{srcAddr: srcAddr, dstAddr: dstAddr, tcpState: TCPStateConnect, done: false, iface: pool.iface, minMSS: 1460, connHash: GetTCPConnHash(srcAddr, dstAddr)}
+	conn.shared.Window = TCPInitCwnd
+	conn.shared.SeqNum = rand.Uint32() // init seqnum
 	//chR := make(chan []byte)
 	//	chW := make(chan []byte)
 	//	pool.packetHelper.readChan.Lock()
@@ -362,7 +368,9 @@ func (conn *TCPConnUserSpace) readLoop(stopChan chan struct{}) { //need to imple
 			offset := h.Len + int(hTCP.DataOffset<<2)
 			log.Debug("readLoop data len: ", h.TotalLen-offset)
 			if (hTCP.Ctrl & ACK) == ACK {
-				conn.RecvNextSeqNum += uint32(h.TotalLen - offset) // need to sync
+				conn.shared.Lock()
+				conn.shared.RecvNextSeqNum += uint32(h.TotalLen - offset) // need to sync
+				conn.shared.Unlock()
 			}
 			if (h.TotalLen - offset) > 0 {
 				log.Debug("readLoop write readChan")
@@ -375,10 +383,12 @@ func (conn *TCPConnUserSpace) readLoop(stopChan chan struct{}) { //need to imple
 			log.Debug("readLoop writeDataChan notify 2")
 		case TCPStateSYNSent:
 			if ((hTCP.Ctrl & ACK) == ACK) && ((hTCP.Ctrl & SYN) == SYN) {
-				//conn.AckNum = conn.RecvAckNum
-				conn.SentAckNum = hTCP.SeqNum + 1
-				conn.RecvNextSeqNum = conn.SentAckNum
-				conn.SeqNum++
+				conn.shared.Lock()
+				//conn.shared.AckNum = conn.RecvAckNum
+				conn.shared.SentAckNum = hTCP.SeqNum + 1
+				conn.shared.RecvNextSeqNum = conn.shared.SentAckNum
+				conn.shared.SeqNum++
+				conn.shared.Unlock()
 				log.Debug("SYN ACK recv ")
 				h := &Header{}
 				opt := []TCPOption{{Kind: TCPOptMSS, Length: 4}}
@@ -444,10 +454,12 @@ func (conn *TCPConnUserSpace) writeDataLoop(stopChan chan struct{}) {
 				hTCP := &TCPHeader{
 					Ctrl: 0,
 				}
-				if conn.SentAckNum != conn.RecvNextSeqNum { //need to sync
-					conn.SentAckNum = conn.RecvNextSeqNum
+				conn.shared.Lock()
+				if conn.shared.SentAckNum != conn.shared.RecvNextSeqNum { //need to sync
+					conn.shared.SentAckNum = conn.shared.RecvNextSeqNum
 					hTCP.Ctrl |= ACK
 				}
+				conn.shared.Unlock()
 				p := conn.GetPacket(h, hTCP, buf)
 				h, _ = ParseHeader(p)
 				log.Debug("writeDataLoop pack packet len ", len(p), " mss ", conn.minMSS)
@@ -513,15 +525,16 @@ func (conn *TCPConnUserSpace) Close() (err error) {
 	return io.EOF
 }
 
+// GetPacket need to sync by shared.Lock
 func (conn *TCPConnUserSpace) GetPacket(h *Header, hTCP *TCPHeader, d []byte) (b []byte) {
-
-	conn.ID++
+	conn.shared.Lock()
+	conn.shared.ID++
 
 	// IP Header
 	h.Version = Version
 	h.Len = HeaderLen
 	h.TOS = 0
-	h.ID = conn.ID
+	h.ID = conn.shared.ID
 	h.TTL = 64
 	h.Protocol = 6 // 6 means tcp
 	h.Src = conn.srcAddr.IP
@@ -531,16 +544,16 @@ func (conn *TCPConnUserSpace) GetPacket(h *Header, hTCP *TCPHeader, d []byte) (b
 
 	hTCP.SrcPort = uint16(conn.srcAddr.Port)
 	hTCP.DstPort = uint16(conn.dstAddr.Port)
-	hTCP.SeqNum = conn.SeqNum
+	hTCP.SeqNum = conn.shared.SeqNum
 	if (hTCP.Ctrl & ACK) == ACK {
-		hTCP.AckNum = conn.SentAckNum
+		hTCP.AckNum = conn.shared.SentAckNum
 	} else {
 		hTCP.AckNum = 0
 	}
 	//	hTCP.DataOffset = 5
 	hTCP.Reserved = 0
 	hTCP.ECN = 0
-	hTCP.Window = conn.Window
+	hTCP.Window = conn.shared.Window
 	hTCP.Urgent = 0
 
 	TCPData := hTCP.Marshal()
@@ -551,12 +564,13 @@ func (conn *TCPConnUserSpace) GetPacket(h *Header, hTCP *TCPHeader, d []byte) (b
 		if h.TotalLen > conn.minMSS {
 			h.TotalLen = conn.minMSS
 		}
-		conn.SeqNum += uint32(h.TotalLen - (20 + len(TCPData)))
+		conn.shared.SeqNum += uint32(h.TotalLen - (20 + len(TCPData)))
 		//		binary.BigEndian.PutUint32(TCPData[4:8], conn.SeqNum)
 		TCPData = append(TCPData, d...)
 	} else {
 		h.TotalLen = h.Len + len(TCPData)
 	}
+	conn.shared.Unlock()
 	tcpCheckSum := Csum(TCPData, conn.srcAddr.IP, conn.dstAddr.IP)
 	TCPData[16] = byte(tcpCheckSum >> 8)
 	TCPData[17] = byte(tcpCheckSum & 0xff)
