@@ -498,8 +498,9 @@ func (conn *TCPConnUserSpace) Read(p []byte) (n int, err error) {
 		return 0, io.EOF
 	}
 	log.Debug("read")
-	p = <-conn.readChan //32*1024 max
-	n = len(p)
+	buf := <-conn.readChan //32*1024 max
+	n = len(buf)
+	copy(p, buf[0:n])
 	log.Debug("read len ", n)
 	return n, err
 }

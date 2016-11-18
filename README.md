@@ -21,4 +21,4 @@ proxy -s --lsnaddr="localhost:10012"
 redirect http:
 
 iptables -A OUTPUT -t nat -p tcp --dport 80 -j REDIRECT --to-port 10011
-iptables -A PREROUTING -t nat -p tcp --dport 80 -j REDIRECT --to-port 10011
+iptables -A PREROUTING -t nat -p tcp -s 192.168.77.1 --dport 22 -j REDIRECT --to-port 10011
