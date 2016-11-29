@@ -25,6 +25,7 @@ import (
 	"net"
 	"sync"
 	"syscall"
+	"time"
 	"unsafe"
 
 	log "github.com/Sirupsen/logrus"
@@ -192,8 +193,22 @@ func (conn *TCPConnUserSpace) getTCPSyn() []byte {
 		Window:     conn.shared.Window, // The amount of data that it is able to accept in bytes
 		Checksum:   0,                  // Kernel will set this if it's 0
 		Urgent:     0,
-		Options:    []TCPOption{},
+		Options: []TCPOption{{Kind: TCPOptMSS, Length: 4},
+			{Kind: TCPOptSACKPerm, Length: 2},
+			{Kind: TCPOptTimeStamp, Length: 10},
+			{Kind: TCPOptNOP, Length: 1},
+			{Kind: TCPOptWindow, Length: 3}},
 	}
+
+	tcpHeader.Options[0].Data = make([]byte, 2)
+	binary.BigEndian.PutUint16(tcpHeader.Options[0].Data, uint16(1460)) //mss
+
+	tcpHeader.Options[2].Data = make([]byte, 8)
+	binary.BigEndian.PutUint32(tcpHeader.Options[2].Data[0:4], uint32(time.Now().UnixNano()<<10)) //TSval
+	binary.BigEndian.PutUint32(tcpHeader.Options[2].Data[4:8], uint32(0))
+
+	tcpHeader.Options[3].Data = []byte{0x3} // window scalling
+
 	TCPData := tcpHeader.Marshal()
 	tcpCheckSum := Csum(TCPData, conn.srcAddr.IP, conn.dstAddr.IP)
 	ipHeader := &Header{
@@ -391,8 +406,10 @@ func (conn *TCPConnUserSpace) readLoop(stopChan chan struct{}) { //need to imple
 				conn.shared.Unlock()
 				log.Debug("SYN ACK recv ")
 				h := &Header{}
-				opt := []TCPOption{{Kind: TCPOptMSS, Length: 4}}
-				opt[0].Data = make([]byte, 2)
+				opt := []TCPOption{{Kind: TCPOptTimeStamp, Length: 10}}
+				opt[0].Data = make([]byte, 8)
+				binary.BigEndian.PutUint32(opt[0].Data[0:4], uint32(time.Now().UnixNano()<<10)) //TSval
+				binary.BigEndian.PutUint32(opt[0].Data[4:8], uint32(0))                         //TSecr todo need to parse
 				binary.BigEndian.PutUint16(opt[0].Data, uint16(1460))
 				hTCP := &TCPHeader{
 					Ctrl:    ACK,
