@@ -393,7 +393,7 @@ func (conn *TCPConnUserSpace) readLoop(stopChan chan struct{}) { //need to imple
 				h := &Header{}
 				opt := []TCPOption{{Kind: TCPOptMSS, Length: 4}}
 				opt[0].Data = make([]byte, 2)
-				binary.BigEndian.PutUint16(opt[0].Data, uint16(1500))
+				binary.BigEndian.PutUint16(opt[0].Data, uint16(1460))
 				hTCP := &TCPHeader{
 					Ctrl:    ACK,
 					Options: opt,
@@ -442,41 +442,32 @@ func (conn *TCPConnUserSpace) writeDataLoop(stopChan chan struct{}) {
 			return
 		case buf := <-conn.writeDataChan:
 			log.Debug("writeDataLoop get buf ", len(buf), " bytes")
-			for {
-				log.Debug("Cycle")
-				//time.Sleep(1 * time.Second)
-				select {
-				case <-stopChan:
-					return
-				default:
-				}
-				h := &Header{}
-				hTCP := &TCPHeader{
-					Ctrl: 0,
-				}
-				conn.shared.Lock()
-				if conn.shared.SentAckNum != conn.shared.RecvNextSeqNum { //need to sync
-					conn.shared.SentAckNum = conn.shared.RecvNextSeqNum
-					hTCP.Ctrl |= ACK
-				}
-				conn.shared.Unlock()
-				p := conn.GetPacket(h, hTCP, buf)
-				h, _ = ParseHeader(p)
-				log.Debug("writeDataLoop pack packet len ", len(p), " mss ", conn.minMSS)
-				log.Debug("writeDataLoop check ip header: ", h)
-				hTCP = ParseTCPHeader(p[h.Len:])
-				log.Debug("writeDataLoop check tcp header: ", hTCP)
 
-				//conn.writePacketChan
-				if len(p) > conn.minMSS {
-					buf = p[conn.minMSS:]
-					conn.writePacketChan <- p[:conn.minMSS]
-					continue
-				} else {
-					conn.writePacketChan <- p
-					break
-				}
+			log.Debug("Cycle")
+			//time.Sleep(1 * time.Second)
+			select {
+			case <-stopChan:
+				return
+			default:
 			}
+			h := &Header{}
+			hTCP := &TCPHeader{
+				Ctrl: PSH,
+			}
+			conn.shared.Lock()
+			if conn.shared.SentAckNum != conn.shared.RecvNextSeqNum { //need to sync
+				conn.shared.SentAckNum = conn.shared.RecvNextSeqNum
+				hTCP.Ctrl |= ACK
+			}
+			conn.shared.Unlock()
+			p := conn.GetPacket(h, hTCP, buf)
+			h, _ = ParseHeader(p)
+			log.Debug("writeDataLoop pack packet len ", len(p), " mss ", conn.minMSS)
+			log.Debug("writeDataLoop check ip header: ", h)
+			hTCP = ParseTCPHeader(p[h.Len:])
+			log.Debug("writeDataLoop check tcp header: ", hTCP)
+			conn.writePacketChan <- p
+
 		}
 	}
 }
@@ -562,9 +553,6 @@ func (conn *TCPConnUserSpace) GetPacket(h *Header, hTCP *TCPHeader, d []byte) (b
 	//full len calc
 	if d != nil {
 		h.TotalLen = h.Len + len(TCPData) + len(d)
-		if h.TotalLen > conn.minMSS {
-			h.TotalLen = conn.minMSS
-		}
 		conn.shared.SeqNum += uint32(h.TotalLen - (20 + len(TCPData)))
 		//		binary.BigEndian.PutUint32(TCPData[4:8], conn.SeqNum)
 		TCPData = append(TCPData, d...)
