@@ -149,7 +149,42 @@ func ParseTCPHeader(data []byte) *TCPHeader {
 	binary.Read(r, binary.BigEndian, &tcp.Window)
 	binary.Read(r, binary.BigEndian, &tcp.Checksum)
 	binary.Read(r, binary.BigEndian, &tcp.Urgent)
-
+	tcp.Options = []TCPOption{}
+	for {
+		opt := TCPOption{}
+		err := binary.Read(r, binary.BigEndian, &opt.Kind)
+		if err != nil {
+			break
+		}
+		if opt.Kind == TCPOptNOP {
+			tcp.Options = append(tcp.Options, opt)
+			continue
+		}
+		err = binary.Read(r, binary.BigEndian, &opt.Length)
+		if err != nil {
+			break
+		}
+		if opt.Length == 2 {
+			tcp.Options = append(tcp.Options, opt)
+			continue
+		}
+		opt.Data = make([]byte, opt.Length-2)
+		if opt.Kind == TCPOptTimeStamp {
+			err = binary.Read(r, binary.BigEndian, opt.Data[0:4])
+			if err != nil {
+				break
+			}
+			_, err = r.Read(opt.Data[4:8])
+			if err != nil {
+				break
+			}
+			continue
+		}
+		err = binary.Read(r, binary.BigEndian, opt.Data)
+		if err != nil {
+			break
+		}
+	}
 	return &tcp
 }
 
@@ -406,11 +441,20 @@ func (conn *TCPConnUserSpace) readLoop(stopChan chan struct{}) { //need to imple
 				conn.shared.Unlock()
 				log.Debug("SYN ACK recv ")
 				h := &Header{}
-				opt := []TCPOption{{Kind: TCPOptTimeStamp, Length: 10}}
-				opt[0].Data = make([]byte, 8)
-				binary.BigEndian.PutUint32(opt[0].Data[0:4], uint32(time.Now().UnixNano()<<10)) //TSval
-				binary.BigEndian.PutUint32(opt[0].Data[4:8], uint32(0))                         //TSecr todo need to parse
-				binary.BigEndian.PutUint16(opt[0].Data, uint16(1460))
+				var TSecr [4]byte
+				for _, opt := range hTCP.Options {
+					if opt.Kind == TCPOptTimeStamp {
+						copy(TSecr[:], opt.Data[0:4])
+						break
+					}
+				}
+				opt := []TCPOption{
+					{Kind: TCPOptNOP, Length: 1},
+					{Kind: TCPOptNOP, Length: 1},
+					{Kind: TCPOptTimeStamp, Length: 10}}
+				opt[2].Data = make([]byte, 8)
+				binary.BigEndian.PutUint32(opt[2].Data[0:4], uint32(time.Now().UnixNano()<<10)) //TSval
+				copy(opt[2].Data[4:8], TSecr[:])                                                //TSecr
 				hTCP := &TCPHeader{
 					Ctrl:    ACK,
 					Options: opt,
