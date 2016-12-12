@@ -118,6 +118,7 @@ type TCPConnUserSpace struct {
 		Window         uint16
 		WindowShift    int
 		byteOnFly      int
+		TSecr          [4]byte
 	}
 	readChan        chan []byte
 	readPacketChan  chan []byte
@@ -178,12 +179,14 @@ func ParseTCPHeader(data []byte) *TCPHeader {
 			if err != nil {
 				break
 			}
+			tcp.Options = append(tcp.Options, opt)
 			continue
 		}
 		err = binary.Read(r, binary.BigEndian, opt.Data)
 		if err != nil {
 			break
 		}
+		tcp.Options = append(tcp.Options, opt)
 	}
 	return &tcp
 }
@@ -415,6 +418,14 @@ func (conn *TCPConnUserSpace) readLoop(stopChan chan struct{}) { //need to imple
 		log.Debug("readLoop Recv tcp header: ", hTCP)
 		switch conn.tcpState {
 		case TCPStateEstablished:
+			for _, opt := range hTCP.Options {
+				if opt.Kind == TCPOptTimeStamp {
+					//	conn.shared.Lock()
+					copy(conn.shared.TSecr[:], opt.Data[0:4])
+					//	conn.shared.Unlock()
+					break
+				}
+			}
 			offset := h.Len + int(hTCP.DataOffset<<2)
 			log.Debug("readLoop data len: ", h.TotalLen-offset)
 			if (hTCP.Ctrl & ACK) == ACK {
@@ -445,6 +456,9 @@ func (conn *TCPConnUserSpace) readLoop(stopChan chan struct{}) { //need to imple
 				for _, opt := range hTCP.Options {
 					if opt.Kind == TCPOptTimeStamp {
 						copy(TSecr[:], opt.Data[0:4])
+						//	conn.shared.Lock()
+						copy(conn.shared.TSecr[:], opt.Data[0:4])
+						//	conn.shared.Unlock()
 						break
 					}
 				}
@@ -513,13 +527,13 @@ func (conn *TCPConnUserSpace) writeDataLoop(stopChan chan struct{}) {
 			}
 			h := &Header{}
 			hTCP := &TCPHeader{
-				Ctrl: PSH,
+				Ctrl: ACK,
 			}
 			conn.shared.Lock()
-			if conn.shared.SentAckNum != conn.shared.RecvNextSeqNum { //need to sync
-				conn.shared.SentAckNum = conn.shared.RecvNextSeqNum
-				hTCP.Ctrl |= ACK
-			}
+			//			if conn.shared.SentAckNum != conn.shared.RecvNextSeqNum { //need to sync
+			//				conn.shared.SentAckNum = conn.shared.RecvNextSeqNum
+			//			hTCP.Ctrl |= ACK
+			//			}
 			conn.shared.Unlock()
 			p := conn.GetPacket(h, hTCP, buf)
 			h, _ = ParseHeader(p)
@@ -608,7 +622,18 @@ func (conn *TCPConnUserSpace) GetPacket(h *Header, hTCP *TCPHeader, d []byte) (b
 	hTCP.ECN = 0
 	hTCP.Window = conn.shared.Window
 	hTCP.Urgent = 0
+	hTCP.Options = make([]TCPOption, 3)
 
+	hTCP.Options[0].Kind = TCPOptNOP
+	hTCP.Options[0].Length = 1
+	hTCP.Options[1].Kind = TCPOptNOP
+	hTCP.Options[1].Length = 2
+	hTCP.Options[2].Kind = TCPOptTimeStamp
+	hTCP.Options[2].Length = 10
+
+	//	conn.shared.RLock()
+	copy(hTCP.Options[2].Data, conn.shared.TSecr[:])
+	//	conn.shared.RUnlock()
 	TCPData := hTCP.Marshal()
 
 	//full len calc

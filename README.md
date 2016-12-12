@@ -1,4 +1,4 @@
-Go (MP)TCP Proxy
+Go (MP)TCP Gate
 ================
 
 Command line arguments
@@ -12,6 +12,9 @@ Command line arguments
   - pass - passphrase (client mode only).
   - logfile - log file name (stdout if not set, default is stdout).
 
+build and run 
+---------
+go build proxy.go config.go header.go  log.go  mptcp.go  network.go  packethelper.go   tcp.go  utils.go ; sudo ./proxy -lsnaddr 10.10.1.1:10011 -loglevel=debug
 
 How to run
 ----------
