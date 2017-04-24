@@ -38,11 +38,12 @@ int main(){
 
   /*---- Accept call creates a new socket for the incoming connection ----*/
   addr_size = sizeof serverStorage;
+while(1){
   newSocket = accept(welcomeSocket, (struct sockaddr *) &serverStorage, &addr_size);
 
   /*---- Send message to the socket of the incoming connection ----*/
   strcpy(buffer,"Hello World\n");
   send(newSocket,buffer,13,0);
-
+}
   return 0;
 }
