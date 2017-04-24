@@ -15,7 +15,7 @@ type PacketQ struct {
 	out           chan []byte
 	done          chan bool
 	queue         map[uint32]*ParcedPacket // map key is packet seqNum
-	minNextSeqNum uint32                   //is a minimal next seq num seqNum + len
+	minNextSeqNum uint32                   //is a minimal next seq num seqNum + len. SeqNum wait for
 }
 
 func newPacketQ() (packetQ *PacketQ) {
@@ -23,7 +23,7 @@ func newPacketQ() (packetQ *PacketQ) {
 	packetQ = &PacketQ{}
 	packetQ.in = make(chan *ParcedPacket, 100)
 	packetQ.out = make(chan []byte, 100)
-
+	go packetQ.QueueListener()
 	return packetQ
 }
 
@@ -36,7 +36,9 @@ func (packetQ *PacketQ) QueueListener() {
 			break
 		case packet := <-packetQ.in:
 			if packet.tcpHeader.SeqNum == packetQ.minNextSeqNum {
-				packetQ.out <- packet.data
+				if len(packet.data) > 0 {
+					packetQ.out <- packet.data
+				}
 				packetQ.minNextSeqNum = packet.tcpHeader.SeqNum + uint32(len(packet.data))
 			} else {
 				packetQ.queue[packet.tcpHeader.SeqNum] = packet
@@ -47,7 +49,9 @@ func (packetQ *PacketQ) QueueListener() {
 				if packet, ok = packetQ.queue[packetQ.minNextSeqNum]; !ok {
 					break
 				}
-				packetQ.out <- packet.data
+				if len(packet.data) > 0 {
+					packetQ.out <- packet.data
+				}
 				packetQ.minNextSeqNum = packet.tcpHeader.SeqNum + uint32(len(packet.data))
 				delete(packetQ.queue, packetQ.minNextSeqNum)
 			}

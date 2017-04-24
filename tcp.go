@@ -131,6 +131,8 @@ type TCPConnUserSpace struct {
 	tcpState        TcpState
 }
 
+var packetQ *PacketQ
+
 // Parse packet into TCPHeader structure
 func ParseTCPHeader(data []byte) *TCPHeader {
 	var tcp TCPHeader
@@ -481,6 +483,7 @@ func (conn *TCPConnUserSpace) readLoop(stopChan chan struct{}) { //need to imple
 				writeDataLoopStopChan := make(chan struct{})
 				conn.stopChans = append(conn.stopChans, writeDataLoopStopChan)
 				go conn.writeDataLoop(writeDataLoopStopChan)
+				packetQ = newPacketQ()
 			}
 		}
 	}
