@@ -114,6 +114,7 @@ func (tcp *TCPHeader) Marshal() []byte {
 		uint16(tcp.Reserved)<<9 | // 3 bits
 			uint16(tcp.ECN)<<6 | // 3 bits
 			uint16(tcp.Ctrl) // bottom 6 bits
+
 	binary.Write(buf, binary.BigEndian, mix)
 
 	binary.Write(buf, binary.BigEndian, tcp.Window)
@@ -132,12 +133,13 @@ func (tcp *TCPHeader) Marshal() []byte {
 
 	// Padding
 	padding := len(out) % 4
-	for i := 0; i < padding; i++ {
-		out = append(out, 0)
+	if padding != 0 {
+		for i := 0; i < (4 - padding); i++ {
+			out = append(out, 0)
+		}
 	}
 
-	out[12] = (out[12] & 0xff) | (byte(len(out)) << 2)
-
+	out[12] |= byte(len(out)) << 2
 	out = append(out, tcp.Data...)
 	return out
 }
