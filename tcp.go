@@ -108,9 +108,9 @@ type TCPConnUserSpace struct {
 	iface   *tuntap.Interface
 	srcAddr *net.TCPAddr
 	dstAddr *net.TCPAddr
-	shared  struct {
+	shared  struct { // todo dynamic data
 		sync.RWMutex
-		SeqNum         uint32
+		SeqNum         uint32 //todo нужно описать значения переменных развернуто
 		SentAckNum     uint32
 		RecvSeqNum     uint32
 		RecvNextSeqNum uint32
@@ -247,7 +247,7 @@ func (conn *TCPConnUserSpace) getTCPSyn() []byte {
 	binary.BigEndian.PutUint32(tcpHeader.Options[2].Data[0:4], uint32(time.Now().UnixNano()<<10)) //TSval
 	binary.BigEndian.PutUint32(tcpHeader.Options[2].Data[4:8], uint32(0))
 
-	tcpHeader.Options[3].Data = []byte{0x3} // window scalling
+	tcpHeader.Options[4].Data = []byte{0x7} // window scalling
 
 	TCPData := tcpHeader.Marshal()
 	tcpCheckSum := Csum(TCPData, conn.srcAddr.IP, conn.dstAddr.IP)
@@ -374,7 +374,7 @@ func (pool *TCPConnPool) getSrcAddr(dstAddr *net.TCPAddr) *net.TCPAddr {
 func (pool *TCPConnPool) DialUserSpaceTCP(dstAddr *net.TCPAddr) *TCPConnUserSpace {
 	srcAddr := pool.getSrcAddr(dstAddr)
 	conn := &TCPConnUserSpace{srcAddr: srcAddr, dstAddr: dstAddr, tcpState: TCPStateConnect, done: false, iface: pool.iface, minMSS: 1460, connHash: GetTCPConnHash(srcAddr, dstAddr)}
-	conn.shared.Window = TCPInitCwnd
+	conn.shared.Window = TCPInitCwnd >> 7
 	conn.shared.SeqNum = rand.Uint32() // init seqnum
 	//chR := make(chan []byte)
 	//	chW := make(chan []byte)
@@ -420,6 +420,7 @@ func (conn *TCPConnUserSpace) readLoop(stopChan chan struct{}) { //need to imple
 		log.Debug("readLoop Recv tcp header: ", hTCP)
 		switch conn.tcpState {
 		case TCPStateEstablished:
+			log.Debug("readLoop Established")
 			for _, opt := range hTCP.Options {
 				if opt.Kind == TCPOptTimeStamp {
 					//	conn.shared.Lock()
@@ -430,11 +431,12 @@ func (conn *TCPConnUserSpace) readLoop(stopChan chan struct{}) { //need to imple
 			}
 			offset := h.Len + int(hTCP.DataOffset<<2)
 			log.Debug("readLoop data len: ", h.TotalLen-offset)
-			if (hTCP.Ctrl & ACK) == ACK {
+			if (hTCP.Ctrl & ACK) == ACK { // здесь подтверждение приема????? хрень какаето
 				conn.shared.Lock()
 				conn.shared.RecvNextSeqNum += uint32(h.TotalLen - offset) // need to sync
 				conn.shared.Unlock()
 			}
+			// todo нет счетчика принятых байтов для отправки их как acknum это главный баг сейчас
 			if (h.TotalLen - offset) > 0 {
 				log.Debug("readLoop write readChan")
 				conn.readChan <- buf[offset:h.TotalLen]
@@ -442,9 +444,10 @@ func (conn *TCPConnUserSpace) readLoop(stopChan chan struct{}) { //need to imple
 			}
 			var null []byte
 			log.Debug("readLoop writeDataChan notify 1")
-			conn.writeDataChan <- null
+			conn.writeDataChan <- null //todo потом это нужно будет переделать на SACK опцию
 			log.Debug("readLoop writeDataChan notify 2")
 		case TCPStateSYNSent:
+			log.Debug("readLoop SYN Sent")
 			if ((hTCP.Ctrl & ACK) == ACK) && ((hTCP.Ctrl & SYN) == SYN) {
 				conn.shared.Lock()
 				//conn.shared.AckNum = conn.RecvAckNum
@@ -476,9 +479,9 @@ func (conn *TCPConnUserSpace) readLoop(stopChan chan struct{}) { //need to imple
 					Options: opt,
 				}
 				p := conn.GetPacket(h, hTCP, nil)
-				log.Debug("writePacketChan writing ")
+				log.Debug("readLoop writePacketChan writing ")
 				conn.writePacketChan <- p
-				log.Debug("writePacketChan written ")
+				log.Debug("readLoop writePacketChan written ")
 				conn.tcpState = TCPStateEstablished
 				writeDataLoopStopChan := make(chan struct{})
 				conn.stopChans = append(conn.stopChans, writeDataLoopStopChan)
