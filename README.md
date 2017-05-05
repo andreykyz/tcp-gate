@@ -25,3 +25,10 @@ redirect http:
 
 iptables -A OUTPUT -t nat -p tcp --dport 80 -j REDIRECT --to-port 10011
 iptables -A PREROUTING -t nat -p tcp -s 192.168.77.1 --dport 22 -j REDIRECT --to-port 10011
+
+test it:
+on server run (ip address 10.10.0.2):
+simpleClientServer/server
+
+on client:
+iptables -A OUTPUT -t nat -p tcp -d 10.10.0.2 --dport 10012 -j REDIRECT --to-port 10011
