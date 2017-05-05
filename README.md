@@ -32,3 +32,4 @@ simpleClientServer/server
 
 on client:
 iptables -A OUTPUT -t nat -p tcp -d 10.10.0.2 --dport 10012 -j REDIRECT --to-port 10011
+simpleClientServer/client
