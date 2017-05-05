@@ -111,9 +111,9 @@ type TCPConnUserSpace struct {
 	shared  struct { // todo dynamic data
 		sync.RWMutex
 		SeqNum         uint32 //todo нужно описать значения переменных развернуто
-		SentAckNum     uint32
-		RecvSeqNum     uint32
-		RecvNextSeqNum uint32
+		SentAckNum     uint32 // last sent RecvNextSeqNum т.е. последнее подтверждение, последнее отправленное значение ack num
+		RecvSeqNum     uint32 //?????
+		RecvNextSeqNum uint32 // recived data amount + start seq num - send it in ack num( это значение предста ставляет из себя количество принятых байт от начального секнума, т.е. это значение нужно отправлять в ack)
 		ID             uint16
 		Window         uint16
 		WindowShift    int
@@ -431,13 +431,14 @@ func (conn *TCPConnUserSpace) readLoop(stopChan chan struct{}) { //need to imple
 			}
 			offset := h.Len + int(hTCP.DataOffset<<2)
 			log.Debug("readLoop data len: ", h.TotalLen-offset)
-			if (hTCP.Ctrl & ACK) == ACK { // здесь подтверждение приема????? хрень какаето
-				conn.shared.Lock()
-				conn.shared.RecvNextSeqNum += uint32(h.TotalLen - offset) // need to sync
-				conn.shared.Unlock()
+			if (hTCP.Ctrl & ACK) == ACK { // todo здесь подтверждение приема, это нужно обрабатывать и сохранять и проверять подтверждение
+
 			}
 			// todo нет счетчика принятых байтов для отправки их как acknum это главный баг сейчас
 			if (h.TotalLen - offset) > 0 {
+				conn.shared.Lock()
+				conn.shared.RecvNextSeqNum += uint32(h.TotalLen - offset) // todo need to sync
+				conn.shared.Unlock()
 				log.Debug("readLoop write readChan")
 				conn.readChan <- buf[offset:h.TotalLen]
 				log.Debug("readLoop written readChan")
@@ -536,10 +537,10 @@ func (conn *TCPConnUserSpace) writeDataLoop(stopChan chan struct{}) {
 				Ctrl: ACK,
 			}
 			conn.shared.Lock()
-			//			if conn.shared.SentAckNum != conn.shared.RecvNextSeqNum { //need to sync
-			//				conn.shared.SentAckNum = conn.shared.RecvNextSeqNum
-			//			hTCP.Ctrl |= ACK
-			//			}
+			if conn.shared.SentAckNum != conn.shared.RecvNextSeqNum { //need to sync
+				conn.shared.SentAckNum = conn.shared.RecvNextSeqNum
+				hTCP.Ctrl |= ACK
+			}
 			conn.shared.Unlock()
 			p := conn.GetPacket(h, hTCP, buf)
 			h, _ = ParseHeader(p)
