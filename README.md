@@ -1,6 +1,8 @@
 Go (MP)TCP Gate
 ================
 
+Currenly only TCP worked WO congetion contorol
+
 Command line arguments
 ----------------------
 
